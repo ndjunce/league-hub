@@ -51,3 +51,13 @@ Correctness + clarity fixes Nick found.
 
 ## 2026-09-18 — v4: rename "League Hub" → "Royal Crushers League Hub" — WORKS
 Trivial display-only rename. Updated the static `<title>` and `<h1>` fallbacks to "Royal Crushers League Hub", and the JS now builds the header + `document.title` dynamically from config: `hubTitle = \`${LEAGUE.name} League Hub\`` (LEAGUE.name = "Royal Crushers"), so it stays correct if the hub is ever re-pointed at another league. Static fallbacks match the dynamic value. No data/proxy/logic touched; JS parses clean. Commit ndjunce/noreply. Freeze before: v3 at 80e47b7.
+
+## 2026-09-18 — Trade Block tab added — WORKS (simple factual counts only)
+New "🔁 Trade Block" tab on the Hub. Per the FINALIZED spec: SIMPLE + FACTUAL only — each team's positional roster COUNT vs Royal Crushers' starting need, labeled surplus / shortage / ok. NO values, NO rankings, NO recommendations, NO manual input / Google Sheet. Auto from the existing Hub ESPN proxy rosters (no new fetch). The analytical layer (value rankings, evaluator) stays OFF the shared board (that's Nick's private tools).
+
+- Starting slots used: QB, RB×2, WR×2, TE, FLEX(RB/WR/TE), D/ST, K.
+- `blockStatus(pos,count)`: RB/WR/TE (flex-depth) → short at ≤ dedicated need, surplus beyond starts+flex+backup. QB → short with no backup (≤1), surplus at 3+. **D/ST + K → 1 is normal (ok), short only at 0, surplus at 3+** — refined after first pass false-flagged EVERY team "short at K/DST" (count=1 = need=1). That was noise/misleading; fixed so the board only surfaces actionable thin/deep spots.
+- Renders: a team×position grid (counts, color-coded surplus green / short red / ok muted, sticky team column, horizontal-scroll on mobile) + an "at a glance" plain-English list ("deep at WR · thin at TE"). Honest caption: just counts, start your own conversation.
+
+**Verified (node + live rosters):** JS parses clean; tab wired + `paintTradeBlock` called; confirmed factual-only (no ppg/value/rank in the logic). Live output sensible — no false K/DST shortages; real market visible (many teams thin at TE while deep at WR; Isaac/Zach deep at RB). Mobile-first (grid scrolls, sticky team col).
+**Freeze before:** v4 at f41eacc. Commit ndjunce/noreply. Blast radius: index.html only (new tab; existing tabs/data untouched).

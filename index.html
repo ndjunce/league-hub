@@ -85,6 +85,22 @@
   .pill.alive{color:var(--gold);border-color:var(--gold);background:rgba(255,207,63,.10)}
   .pline{color:var(--mut);font-size:12px;margin-top:3px;line-height:1.5}
 
+  /* trade block grid */
+  .blk-legend{display:flex;gap:8px;margin:2px 0 12px;flex-wrap:wrap}
+  .bpill{font-size:10.5px;font-weight:800;padding:2px 9px;border-radius:7px;border:1px solid}
+  .bpill.surplus{color:var(--grn);border-color:var(--grn);background:rgba(51,224,138,.12)}
+  .bpill.short{color:var(--red);border-color:var(--red);background:rgba(255,96,96,.12)}
+  .bpill.ok{color:var(--mut);border-color:var(--line);background:var(--panel2)}
+  .blk-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table.blk{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+  table.blk th,table.blk td{padding:8px 6px;text-align:center;font-size:13px;border-top:1px solid var(--line)}
+  table.blk thead th{color:var(--mut);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;border-top:none}
+  table.blk th.tmh,table.blk td.tmh{text-align:left;font-weight:700;white-space:nowrap;position:sticky;left:0;background:var(--panel);z-index:1}
+  table.blk td.bc{border-radius:0}
+  table.blk td.bc .bn{display:inline-block;min-width:22px;font-weight:800}
+  table.blk td.bc.surplus{background:rgba(51,224,138,.14);color:var(--grn)}
+  table.blk td.bc.short{background:rgba(255,96,96,.14);color:var(--red)}
+  table.blk td.bc.ok{color:var(--mut)}
   .foot{color:var(--mut);font-size:11.5px;margin-top:26px;text-align:center;line-height:1.6}
   .hide{display:none}
 </style>
@@ -99,6 +115,7 @@
   <div class="tabs">
     <div class="tab active" data-tab="insights">📊 League Insights</div>
     <div class="tab" data-tab="playoffs">🏆 Playoff Picture</div>
+    <div class="tab" data-tab="block">🔁 Trade Block</div>
   </div>
 
   <div class="bar">
@@ -110,6 +127,7 @@
   <div id="errbox"></div>
   <div id="pane-insights"><div class="loading">Loading…</div></div>
   <div id="pane-playoffs" class="hide"><div class="loading">Loading…</div></div>
+  <div id="pane-block" class="hide"><div class="loading">Loading…</div></div>
 
   <div class="foot" id="foot"></div>
 </div>
@@ -510,6 +528,83 @@ function paintPlayoffs(){
   el.innerHTML = s.join("");
 }
 
+/* ============================ TRADE BLOCK (simple surplus/shortage counts) ============================ */
+// Factual only: rostered COUNT per position vs Royal Crushers' startable need. No values, no rankings.
+// Starting slots: QB, RB, RB, WR, WR, TE, FLEX, D/ST, K. FLEX is RB/WR/TE eligible.
+const BLOCK_POS = ["QB","RB","WR","TE","DEF","K"];
+const BLOCK_LABEL = { QB:"QB", RB:"RB", WR:"WR", TE:"TE", DEF:"D/ST", K:"K" };
+// base starting requirement per position (dedicated slots only); FLEX handled separately across RB/WR/TE
+const START_NEED = { QB:1, RB:2, WR:2, TE:1, DEF:1, K:1 };
+const FLEX_POOL = ["RB","WR","TE"]; // one FLEX slot any of these can fill
+
+// classify one team's count at a position vs need. Returns {count, need, status:'short'|'surplus'|'ok'}
+function blockStatus(pos, count){
+  const need = START_NEED[pos] || 0;
+  const flexEligible = FLEX_POOL.includes(pos);
+  // D/ST + K are single-slot with no FLEX and no real depth expectation — carrying 1 is normal, not a shortage.
+  // Only flag those "short" if a team rosters ZERO. (Keeps the board honest: don't flag every team thin at K/DST.)
+  if(!flexEligible && need===1){
+    if(count === 0) return { count, need, status:"short" };
+    if(count >= 3) return { count, need, status:"surplus" };  // rare: hoarding kickers/defenses
+    return { count, need, status:"ok" };
+  }
+  // QB (single starter, non-flex, but real depth matters): thin with no backup (<=1), surplus at 3+
+  if(!flexEligible){
+    if(count <= need) return { count, need, status:"short" };   // only 1 QB = no backup = thin
+    if(count >= need + 2) return { count, need, status:"surplus" };
+    return { count, need, status:"ok" };
+  }
+  // RB/WR/TE (flex-eligible depth positions): thin at/below dedicated need; surplus beyond starts+flex+a backup
+  const startable = need + 1; // dedicated starts + a share of the single FLEX
+  if(count <= need) return { count, need, status:"short" };
+  if(count > startable + 1) return { count, need, status:"surplus" };
+  return { count, need, status:"ok" };
+}
+
+function paintTradeBlock(){
+  const D = DATA; const el = document.getElementById("pane-block");
+  if(!D){ el.innerHTML = `<div class="note">No data.</div>`; return; }
+
+  // count rostered players per position per team (plain counts, no weighting)
+  const rows = D.teams.slice().sort((a,b)=> (b.record.w-a.record.w)||(b.pf-a.pf)).map(t=>{
+    const cnt = {}; BLOCK_POS.forEach(p=>cnt[p]=0);
+    t.players.forEach(p=>{ if(cnt[p.pos]!=null) cnt[p.pos]++; });
+    const cells = BLOCK_POS.map(p=>({ pos:p, ...blockStatus(p, cnt[p]) }));
+    return { disp:t.disp, short:t.short, cells,
+             shortages: cells.filter(c=>c.status==="short").map(c=>BLOCK_LABEL[c.pos]),
+             surpluses: cells.filter(c=>c.status==="surplus").map(c=>BLOCK_LABEL[c.pos]) };
+  });
+
+  const s = [];
+  s.push(`<div class="card"><h2>Trade Block — who's deep, who's thin</h2>
+    <div class="cap">Plain roster counts vs starting slots (QB, RB×2, WR×2, TE, FLEX, D/ST, K). <b>Surplus</b> = more bodies than you can start; <b>shortage</b> = at or below what you must start. Just counts — no player values, rankings, or recommendations. Auto from live rosters.</div>`);
+
+  // legend
+  s.push(`<div class="blk-legend"><span class="bpill surplus">surplus</span><span class="bpill short">shortage</span><span class="bpill ok">ok</span></div>`);
+
+  // grid: team rows, position columns
+  s.push(`<div class="blk-wrap"><table class="blk"><thead><tr><th class="tmh">Team</th>`
+    + BLOCK_POS.map(p=>`<th>${BLOCK_LABEL[p]}</th>`).join("") + `</tr></thead><tbody>`);
+  rows.forEach(r=>{
+    s.push(`<tr><td class="tmh">${esc(r.short)}</td>`
+      + r.cells.map(c=>`<td class="bc ${c.status}"><span class="bn">${c.count}</span></td>`).join("")
+      + `</tr>`);
+  });
+  s.push(`</tbody></table></div></div>`);
+
+  // per-team plain-English summary (needs/available at a glance) — still just counts, no analysis
+  s.push(`<div class="card"><h2>At a glance</h2><div class="rows">`
+    + rows.map(r=>{
+        const need = r.shortages.length ? `thin at <b>${r.shortages.join(", ")}</b>` : "";
+        const deep = r.surpluses.length ? `deep at <b>${r.surpluses.join(", ")}</b>` : "";
+        const both = [deep, need].filter(Boolean).join(" · ") || "balanced roster counts";
+        return `<div class="row"><span class="nm">${esc(r.disp)}</span><span class="val" style="font-weight:600;color:var(--mut)">${both}</span></div>`;
+      }).join("")
+    + `</div><div class="cap" style="margin-top:10px">Start a conversation with anyone deep where you're thin (and vice-versa). This board just shows the counts — the rest is up to you.</div></div>`);
+
+  el.innerHTML = s.join("");
+}
+
 /* ============================ LOAD / SHELL ============================ */
 async function load(){
   const status=document.getElementById("status"), errbox=document.getElementById("errbox");
@@ -529,7 +624,7 @@ async function load(){
     }
     DATA = res;
     document.getElementById("sub").textContent = `${DATA.size} teams · ${DATA.season||LEAGUE.season} · Week ${DATA.week}`;
-    paintInsights(); paintPlayoffs();
+    paintInsights(); paintPlayoffs(); paintTradeBlock();
     const hhmm = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
     status.textContent = `Updated ${hhmm}`;
     document.getElementById("foot").innerHTML =
@@ -545,6 +640,7 @@ document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click", ()=>{
   document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active", x===t));
   document.getElementById("pane-insights").classList.toggle("hide", ACTIVE!=="insights");
   document.getElementById("pane-playoffs").classList.toggle("hide", ACTIVE!=="playoffs");
+  document.getElementById("pane-block").classList.toggle("hide", ACTIVE!=="block");
   window.scrollTo({top:0,behavior:"smooth"});
 }));
 document.getElementById("refreshBtn").addEventListener("click", load);

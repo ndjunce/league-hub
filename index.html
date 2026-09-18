@@ -85,6 +85,26 @@
   .pill.alive{color:var(--gold);border-color:var(--gold);background:rgba(255,207,63,.10)}
   .pline{color:var(--mut);font-size:12px;margin-top:3px;line-height:1.5}
 
+  /* member avatars */
+  .mav{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;border-radius:50%;
+       overflow:hidden;background:var(--panel2);border:1px solid var(--line);vertical-align:middle}
+  .mav img{width:100%;height:100%;object-fit:cover;display:block}
+  .mav-fb{width:100%;height:100%;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--mut)}
+  /* At-a-glance list (fixed: full names, no clip) */
+  .ag-list{display:flex;flex-direction:column;gap:2px}
+  .ag-row{display:flex;align-items:center;gap:9px;padding:8px 4px;border-top:1px solid var(--line);flex-wrap:wrap}
+  .ag-row:first-child{border-top:none}
+  .ag-nm{font-weight:800;font-size:14px;flex:0 0 auto}
+  .ag-txt{color:var(--mut);font-size:12.5px;font-weight:600;flex:1 1 100%;padding-left:35px}
+  @media(min-width:480px){.ag-txt{flex:1 1 auto;padding-left:0;text-align:right}}
+  .tm-cell{display:inline-flex;align-items:center;gap:7px}
+  /* top-3 rows inside a tile */
+  .t3{display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 0;border-top:1px solid var(--line)}
+  .t3:first-of-type{border-top:none;margin-top:4px}
+  .t3r{color:var(--mut);font-weight:800;width:12px;text-align:center;flex:0 0 auto}
+  .t3n{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1 1 auto}
+  .t3o{color:var(--mut);font-size:10.5px;flex:0 0 auto}
+  .t3p{font-weight:800;font-variant-numeric:tabular-nums;flex:0 0 auto;margin-left:2px}
   /* trade block grid */
   .blk-legend{display:flex;gap:8px;margin:2px 0 12px;flex-wrap:wrap}
   .bpill{font-size:10.5px;font-weight:800;padding:2px 9px;border-radius:7px;border:1px solid}
@@ -157,9 +177,23 @@ const MEMBER = {
   1:"Seth", 2:"Riley", 5:"Nick", 6:"Henry", 7:"Bobby", 8:"Thor",
   12:"Ben", 13:"Evan", 15:"Charlie", 16:"Isaac", 17:"Zach", 18:"Chet",
 };
+// member logo files copied into assets/logos/ (lowercase firstname + "logo"; Evan is .jpg, rest .png).
+const MEMBER_LOGO = {
+  "Ben":"benlogo.png","Bobby":"bobbylogo.png","Charlie":"charlielogo.png","Chet":"chetlogo.png",
+  "Evan":"Evanlogo.jpg","Henry":"henrylogo.png","Isaac":"isaaclogo.png","Nick":"nicklogo.png",
+  "Riley":"rileylogo.png","Seth":"sethlogo.png","Thor":"thorlogo.png","Zach":"zachlogo.png",
+};
 // display: "Name (Team Name)" when mapped, else the ESPN team name (never blank).
 function memberName(id, teamName){ const n = MEMBER[id]; return n ? `${n} (${teamName})` : teamName; }
 function memberShort(id, teamName){ return MEMBER[id] || teamName; }
+function logoFor(id){ const n = MEMBER[id]; const f = n && MEMBER_LOGO[n]; return f ? `assets/logos/${f}` : null; }
+// small round avatar: member logo if present, else initials circle. `label` = name shown for initials fallback.
+function avatarHtml(id, label, size){
+  const url = logoFor(id); const px = size||24;
+  const initial = esc((String(label||"?").trim()[0]||"?").toUpperCase());
+  if(url) return `<span class="mav" style="width:${px}px;height:${px}px"><img src="${url}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="mav-fb" style="display:none">${initial}</span></span>`;
+  return `<span class="mav" style="width:${px}px;height:${px}px"><span class="mav-fb" style="display:flex">${initial}</span></span>`;
+}
 
 // auto-refresh: light poll so an open tab stays current on game days (does NOT push; re-pulls on interval)
 const AUTO_REFRESH_MS = 150000; // 2.5 min
@@ -358,13 +392,32 @@ function weekSuperlatives(D, wk){
 // adds/drops/lineup changes), so a past week's optimal-vs-actual can't be computed exactly. Per the
 // "exact or gone" rule, it's gone rather than shipping a misleading approximation.
 
+// games played for PPG = number of weeks this player has an actual weekly stat entry (dynamic, not hardcoded).
+function playerGames(p){ return Object.keys(p.byWeek||{}).length; }
+function playerPPG(p){ const g = playerGames(p); return g ? (p.pts / g) : 0; }
+
+// Positional Leaders (season): top scorer per position BY PPG (season total ÷ games played).
 function positionalLeaders(D){
-  const best = {};  // pos -> {name, team, pts, owner}
+  const best = {};  // pos -> {player, team, ppg, ownerId, owner}
   D.teams.forEach(t=>t.players.forEach(p=>{
     if(!STARTABLE_POS.includes(p.pos)) return;
-    if(!best[p.pos] || p.pts > best[p.pos].pts) best[p.pos] = { player:p.name, team:p.team, pts:p.pts, owner:t.short };
+    const ppg = playerPPG(p);
+    if(!best[p.pos] || ppg > best[p.pos].ppg) best[p.pos] = { player:p.name, team:p.team, ppg, ownerId:t.id, owner:t.short };
   }));
   return best;
+}
+
+// Top-3 scorers per position for a SPECIFIC week (from each player's actual weekly points).
+function weekTopScorers(D, wk){
+  const byPos = {};  // pos -> [{player, team, ownerId, owner, pts}]
+  D.teams.forEach(t=>t.players.forEach(p=>{
+    if(!STARTABLE_POS.includes(p.pos)) return;
+    const wp = (p.byWeek||{})[wk];
+    if(wp==null) return;
+    (byPos[p.pos]=byPos[p.pos]||[]).push({ player:p.name, team:p.team, ownerId:t.id, owner:t.short, pts:wp });
+  }));
+  Object.keys(byPos).forEach(P=>{ byPos[P].sort((a,b)=>b.pts-a.pts); byPos[P]=byPos[P].slice(0,3); });
+  return byPos;
 }
 
 // which week the insights week-view is showing (default = current)
@@ -445,12 +498,26 @@ function paintInsights(){
 
   s.push(`<div class="card"><h2>Weekly Results</h2>${weekTabs}${weekBody}${supHtml}</div>`);
 
+  // --- TOP 3 weekly scorers per position (for the selected week) ---
+  if(anyScores){
+    const tops = weekTopScorers(D, wk);
+    const order = ["QB","RB","WR","TE","DEF","K"].filter(p=>tops[p] && tops[p].length);
+    if(order.length){
+      const posName = {QB:"QB",RB:"RB",WR:"WR",TE:"TE",DEF:"D/ST",K:"K"};
+      s.push(`<div class="card"><h2>Top Scorers — Week ${wk}${isCurrent?' (live)':''}</h2><div class="cap">Highest-scoring players at each position this week.</div><div class="grid">`
+        + order.map(P=>`<div class="tile"><div class="k">${posName[P]}</div>`
+            + tops[P].map((x,i)=>`<div class="t3"><span class="t3r">${i+1}</span>${avatarHtml(x.ownerId,x.owner,18)}<span class="t3n">${esc(x.player)}</span><span class="t3o">${esc(x.owner)}</span><span class="t3p">${pts(x.pts)}</span></div>`).join("")
+            + `</div>`).join("")
+        + `</div></div>`);
+    }
+  }
+
   // --- Positional leaders (season) ---
   const pl = positionalLeaders(D);
   const plKeys = STARTABLE_POS.filter(p=>pl[p]);
   if(plKeys.length){
-    s.push(`<div class="card"><h2>Positional Leaders</h2><div class="cap">Top scorer leaguewide at each position (season points).</div><div class="grid">`
-      + plKeys.map(p=>`<div class="tile pos"><div class="k">${p}</div><div class="v">${esc(pl[p].player)}</div><div class="d">${pts(pl[p].pts)} pts · ${esc(pl[p].owner)}</div></div>`).join("")
+    s.push(`<div class="card"><h2>Positional Leaders</h2><div class="cap">Season leader at each position by points per game (season total ÷ games played).</div><div class="grid">`
+      + plKeys.map(p=>`<div class="tile pos"><div class="k">${p}</div><div class="v">${esc(pl[p].player)}</div><div class="d">${avatarHtml(pl[p].ownerId,pl[p].owner,16)} ${pts(pl[p].ppg)} PPG · ${esc(pl[p].owner)}</div></div>`).join("")
       + `</div></div>`);
   }
 
@@ -538,26 +605,23 @@ const START_NEED = { QB:1, RB:2, WR:2, TE:1, DEF:1, K:1 };
 const FLEX_POOL = ["RB","WR","TE"]; // one FLEX slot any of these can fill
 
 // classify one team's count at a position vs need. Returns {count, need, status:'short'|'surplus'|'ok'}
+// Consistent rule: SURPLUS when rostered is well above what you can start (startable + 1);
+// SHORTAGE when at/below what you must start. K/D-ST (single slot, no depth expectation) = 1 is fine.
 function blockStatus(pos, count){
   const need = START_NEED[pos] || 0;
   const flexEligible = FLEX_POOL.includes(pos);
-  // D/ST + K are single-slot with no FLEX and no real depth expectation — carrying 1 is normal, not a shortage.
-  // Only flag those "short" if a team rosters ZERO. (Keeps the board honest: don't flag every team thin at K/DST.)
-  if(!flexEligible && need===1){
+  // K + D/ST: carrying 1 is normal → short only at 0, surplus at 3+ (hoarding).
+  if(!flexEligible && (pos==="K" || pos==="DEF")){
     if(count === 0) return { count, need, status:"short" };
-    if(count >= 3) return { count, need, status:"surplus" };  // rare: hoarding kickers/defenses
+    if(count >= 3)  return { count, need, status:"surplus" };
     return { count, need, status:"ok" };
   }
-  // QB (single starter, non-flex, but real depth matters): thin with no backup (<=1), surplus at 3+
-  if(!flexEligible){
-    if(count <= need) return { count, need, status:"short" };   // only 1 QB = no backup = thin
-    if(count >= need + 2) return { count, need, status:"surplus" };
-    return { count, need, status:"ok" };
-  }
-  // RB/WR/TE (flex-eligible depth positions): thin at/below dedicated need; surplus beyond starts+flex+a backup
-  const startable = need + 1; // dedicated starts + a share of the single FLEX
+  // "startable" = dedicated starting slots + (a share of the 1 FLEX for flex-eligible positions).
+  const startable = need + (flexEligible ? 1 : 0);
+  // SURPLUS = clearly more than you can start (one past startable). TE: need1+flex1=2 → 3+ = surplus. RB/WR: 4+.
+  if(count >= startable + 1) return { count, need, status:"surplus" };
+  // SHORTAGE = at/below what you must start (no depth). QB1 → 1 flagged thin; TE1 → 1 thin; RB2 → ≤2 thin.
   if(count <= need) return { count, need, status:"short" };
-  if(count > startable + 1) return { count, need, status:"surplus" };
   return { count, need, status:"ok" };
 }
 
@@ -570,7 +634,7 @@ function paintTradeBlock(){
     const cnt = {}; BLOCK_POS.forEach(p=>cnt[p]=0);
     t.players.forEach(p=>{ if(cnt[p.pos]!=null) cnt[p.pos]++; });
     const cells = BLOCK_POS.map(p=>({ pos:p, ...blockStatus(p, cnt[p]) }));
-    return { disp:t.disp, short:t.short, cells,
+    return { id:t.id, disp:t.disp, short:t.short, cells,
              shortages: cells.filter(c=>c.status==="short").map(c=>BLOCK_LABEL[c.pos]),
              surpluses: cells.filter(c=>c.status==="surplus").map(c=>BLOCK_LABEL[c.pos]) };
   });
@@ -586,19 +650,19 @@ function paintTradeBlock(){
   s.push(`<div class="blk-wrap"><table class="blk"><thead><tr><th class="tmh">Team</th>`
     + BLOCK_POS.map(p=>`<th>${BLOCK_LABEL[p]}</th>`).join("") + `</tr></thead><tbody>`);
   rows.forEach(r=>{
-    s.push(`<tr><td class="tmh">${esc(r.short)}</td>`
+    s.push(`<tr><td class="tmh"><span class="tm-cell">${avatarHtml(r.id, r.short, 22)}<span>${esc(r.short)}</span></span></td>`
       + r.cells.map(c=>`<td class="bc ${c.status}"><span class="bn">${c.count}</span></td>`).join("")
       + `</tr>`);
   });
   s.push(`</tbody></table></div></div>`);
 
   // per-team plain-English summary (needs/available at a glance) — still just counts, no analysis
-  s.push(`<div class="card"><h2>At a glance</h2><div class="rows">`
+  s.push(`<div class="card"><h2>At a glance</h2><div class="ag-list">`
     + rows.map(r=>{
         const need = r.shortages.length ? `thin at <b>${r.shortages.join(", ")}</b>` : "";
         const deep = r.surpluses.length ? `deep at <b>${r.surpluses.join(", ")}</b>` : "";
         const both = [deep, need].filter(Boolean).join(" · ") || "balanced roster counts";
-        return `<div class="row"><span class="nm">${esc(r.disp)}</span><span class="val" style="font-weight:600;color:var(--mut)">${both}</span></div>`;
+        return `<div class="ag-row">${avatarHtml(r.id, r.short, 26)}<span class="ag-nm">${esc(r.short)}</span><span class="ag-txt">${both}</span></div>`;
       }).join("")
     + `</div><div class="cap" style="margin-top:10px">Start a conversation with anyone deep where you're thin (and vice-versa). This board just shows the counts — the rest is up to you.</div></div>`);
 

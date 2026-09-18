@@ -61,3 +61,14 @@ New "🔁 Trade Block" tab on the Hub. Per the FINALIZED spec: SIMPLE + FACTUAL 
 
 **Verified (node + live rosters):** JS parses clean; tab wired + `paintTradeBlock` called; confirmed factual-only (no ppg/value/rank in the logic). Live output sensible — no false K/DST shortages; real market visible (many teams thin at TE while deep at WR; Isaac/Zach deep at RB). Mobile-first (grid scrolls, sticky team col).
 **Freeze before:** v4 at f41eacc. Commit ndjunce/noreply. Blast radius: index.html only (new tab; existing tabs/data untouched).
+
+## 2026-09-18 — v5: fix clipped names, member logos, top-3 weekly, PPG positional leaders, TE surplus fix — WORKS
+1. **Clipped names FIXED.** The At-a-glance rows used the rank-`.row` grid (26px first col) so `.nm` ellipsis-clipped to one letter, AND used the long "Name (Team)" `disp`. New dedicated `.ag-row` flex layout: avatar + full short name (Seth/Zach/…) + deep/thin text, no clamp; wraps on mobile, no overflow.
+2. **Member logos added.** Copied all 12 files from `fantasy_football_project/pictures_Logos/` into `assets/logos/` (deploy statically; not hotlinked). `MEMBER_LOGO` map (name→file; Evan=.jpg, rest .png) + `logoFor(id)` + `avatarHtml(id,label,size)` (img w/ lazy load + initials fallback on error/missing). Small round avatar now shown by members in At-a-glance, Trade Block grid, positional leaders, top-3. **FLAG:** source PNGs are ~2.3–2.9MB each (~28MB total) — heavy for a shareable page; lazy-loaded + small render, but downscaling later would be a good follow-up (out of scope: spec said copy as-is).
+3. **Top-3 weekly scorers per position** — new "Top Scorers — Week N" card tied to the selected week tab; `weekTopScorers(D,wk)` reads each player's actual weekly points (byWeek[wk]), top 3 per QB/RB/WR/TE/D-ST/K w/ owner + points. Verified Wk1 QB: Caleb Williams 37.3, Josh Allen 35.7, Bryce Young 32.4.
+4. **Positional Leaders → PPG, dynamic games.** Now leader per position BY points-per-game = season total ÷ games played, where games = count of the player's weekly stat entries (`playerGames`), NOT hardcoded. Verified Josh Allen 76.5 ÷ 2 games = 38.2 PPG. Slimmed label + avatar.
+5. **Surplus threshold fixed (Trade Block).** Rewrote `blockStatus` with a consistent "surplus when count ≥ startable+1" rule (startable = dedicated need + flex share). TE: 1→short, 2→ok, **3→surplus** (was neutral). RB 4→surplus. K/D-ST keep "1 is fine." Verified Nick's 3 TE now flags SURPLUS.
+
+**Verified (node + live):** JS parses clean; all pieces present; TE/RB thresholds correct; Nick 3TE=surplus; PPG dynamic; top-3 correct; no hardcoded games count. Mobile-first (names no longer clip; grids scroll).
+**Freeze before:** Trade Block at 0417e6c. Commit ndjunce/noreply.
+### Logged for LATER (spec #5, NOT this build): map these member logos on Nick's PRIVATE dashboard for cross-league people (People Map). Separate from this league-facing Hub.

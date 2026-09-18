@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>League Hub</title>
+<style>
+  :root{
+    --ink:#0a0e14; --panel:#111823; --panel2:#0d131c; --line:#1e2836;
+    --txt:#e6ebf2; --mut:#8b97a7; --accent:#4aa8ff; --grn:#33e08a; --red:#ff6060; --gold:#ffcf3f; --purp:#b878ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--txt);
+       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       -webkit-font-smoothing:antialiased;line-height:1.45}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 14px 60px}
+  header{padding:22px 0 8px}
+  h1{font-size:22px;font-weight:800;margin:0}
+  .sub{color:var(--mut);font-size:13px;margin-top:4px}
+
+  .tabs{display:flex;gap:8px;margin:16px 0 16px;flex-wrap:wrap}
+  .tab{padding:8px 14px;border:1px solid var(--line);border-radius:9px;background:var(--panel);
+       color:var(--mut);font-weight:700;font-size:13px;cursor:pointer;user-select:none}
+  .tab.active{color:var(--txt);border-color:var(--accent);background:rgba(74,168,255,.08)}
+
+  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .btn{padding:7px 13px;border:1px solid var(--line);border-radius:8px;background:var(--panel);
+       color:var(--txt);font-weight:700;font-size:12.5px;cursor:pointer}
+  .btn:hover{border-color:var(--mut)}
+  .btn.primary{background:var(--accent);color:var(--ink);border-color:var(--accent)}
+  .status{color:var(--mut);font-size:12px}
+
+  .loading{color:var(--mut);padding:40px 0;text-align:center}
+  .err{color:var(--red);border:1px solid var(--red);border-radius:9px;padding:14px;margin:10px 0;font-size:13px;line-height:1.6}
+  .note{color:var(--mut);font-size:12.5px;text-align:center;padding:16px 0}
+
+  .card{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:14px 16px;margin-bottom:14px}
+  .card h2{font-size:15px;font-weight:800;margin:0 0 4px}
+  .card .cap{color:var(--mut);font-size:12px;margin:0 0 12px}
+
+  .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+  @media(max-width:560px){.grid{grid-template-columns:1fr}}
+
+  /* superlative tiles */
+  .tile{border:1px solid var(--line);border-radius:10px;background:var(--panel2);padding:12px}
+  .tile .k{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
+  .tile .v{font-size:15px;font-weight:800;margin-top:4px}
+  .tile .d{font-size:12px;color:var(--mut);margin-top:2px;font-variant-numeric:tabular-nums}
+  .tile.good .k{color:var(--grn)} .tile.bad .k{color:var(--red)} .tile.luck .k{color:var(--gold)} .tile.pos .k{color:var(--purp)}
+
+  /* ranked rows */
+  .rows{display:flex;flex-direction:column;gap:2px}
+  .row{display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:center;
+       padding:8px 6px;border-top:1px solid var(--line);font-size:13.5px}
+  .row:first-child{border-top:none}
+  .row .rk{font-weight:800;color:var(--mut);text-align:center;font-variant-numeric:tabular-nums}
+  .row .nm{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .row .nm .sub2{color:var(--mut);font-weight:600;font-size:11.5px;margin-left:6px}
+  .row .val{font-weight:800;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+  .row .val .rec{color:var(--mut);font-weight:600;font-size:12px;margin-left:6px}
+  .row.me{background:rgba(74,168,255,.06)}
+
+  /* matchup preview */
+  .mu{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;
+      border-top:1px solid var(--line);padding:10px 4px}
+  .mu:first-child{border-top:none}
+  .mu .side{min-width:0}
+  .mu .side.r{text-align:right}
+  .mu .tn{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mu .tr{color:var(--mut);font-size:11.5px;font-variant-numeric:tabular-nums}
+  .mu .vs{color:var(--mut);font-size:11px;font-weight:800}
+
+  /* playoff status pills */
+  .pill{display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:7px;border:1px solid;white-space:nowrap}
+  .pill.clinch{color:var(--grn);border-color:var(--grn);background:rgba(51,224,138,.12)}
+  .pill.elim{color:var(--red);border-color:var(--red);background:rgba(255,96,96,.12)}
+  .pill.alive{color:var(--gold);border-color:var(--gold);background:rgba(255,207,63,.10)}
+  .pline{color:var(--mut);font-size:12px;margin-top:3px;line-height:1.5}
+
+  .foot{color:var(--mut);font-size:11.5px;margin-top:26px;text-align:center;line-height:1.6}
+  .hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="lgTitle">League Hub</h1>
+    <div class="sub" id="sub">Loading…</div>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="insights">📊 League Insights</div>
+    <div class="tab" data-tab="playoffs">🏆 Playoff Picture</div>
+  </div>
+
+  <div class="bar">
+    <button class="btn primary" id="refreshBtn">↻ Refresh</button>
+    <span class="status" id="status"></span>
+  </div>
+
+  <div id="errbox"></div>
+  <div id="pane-insights"><div class="loading">Loading…</div></div>
+  <div id="pane-playoffs" class="hide"><div class="loading">Loading…</div></div>
+
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+/* =============================================================================
+   League Hub — standalone, shareable, league-FACING. No personal/targeting data.
+   Royal Crushers = ESPN via the serverless proxy (cookie stays server-side).
+   Provider abstraction: ESPN now, Sleeper (public API, no secret) can drop in later.
+   ============================================================================= */
+
+// ---- CONFIG ----
+const LEAGUE = {
+  provider: "espn",              // "espn" (via proxy) | "sleeper" (direct public API, later)
+  id: "963488",                  // Royal Crushers
+  season: "2026",
+  name: "Royal Crushers",
+  // ESPN proxy base: same-origin on the Vercel deploy; absolute fallback for local/other hosts.
+  espnProxy: (location.hostname.endsWith("vercel.app") || location.hostname==="localhost")
+    ? "/api/espn"
+    : "https://fantasy-dashboard-orpin.vercel.app/api/espn",  // fallback to the existing proxy
+};
+
+// ESPN maps (same as the dashboard's proven normalization)
+const SLOT = {0:"QB",1:"TQB",2:"RB",3:"RB/WR",4:"WR",5:"WR/TE",6:"TE",7:"OP",8:"DT",9:"DE",
+  10:"LB",11:"DL",12:"CB",13:"S",14:"DB",15:"DP",16:"D/ST",17:"K",18:"P",19:"HC",20:"BN",21:"IR",23:"FLEX",24:"ER"};
+const POS = {1:"QB",2:"RB",3:"WR",4:"TE",5:"K",16:"DEF"};
+const PRO = {0:"FA",1:"ATL",2:"BUF",3:"CHI",4:"CIN",5:"CLE",6:"DAL",7:"DEN",8:"DET",9:"GB",10:"TEN",
+  11:"IND",12:"KC",13:"LV",14:"LAR",15:"MIA",16:"MIN",17:"NE",18:"NO",19:"NYG",20:"NYJ",21:"PHI",
+  22:"ARI",23:"PIT",24:"LAC",25:"SF",26:"SEA",27:"TB",28:"WSH",29:"CAR",30:"JAX",33:"BAL",34:"HOU"};
+const STARTABLE_POS = ["QB","RB","WR","TE","K","DEF"];
+
+let DATA = null;
+let ACTIVE = "insights";
+
+async function jraw(url){ const r = await fetch(url, {cache:"no-store"}); if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function pts(n){ return (Math.round((n||0)*10)/10).toFixed(1); }
+
+/* ---------- provider: ESPN (via proxy) ---------- */
+const providers = {};
+providers.espn = (function(){
+  function teamName(t){ return (t.name || `${t.location||""} ${t.nickname||""}`.trim() || ("Team "+t.id)); }
+  const recOf = t => { const o=(t.record&&t.record.overall)||{}; return {w:o.wins||0,l:o.losses||0,t:o.ties||0}; };
+  const pf = t => (t.record&&t.record.overall&&t.record.overall.pointsFor)||0;
+  const pa = t => (t.record&&t.record.overall&&t.record.overall.pointsAgainst)||0;
+
+  function playerOf(entry){
+    const p = (entry.playerPoolEntry && entry.playerPoolEntry.player) || entry.player || {};
+    // actual applied points for the current scoring period (source 0 = actual; NOT projected source 1)
+    const applied = (entry.playerPoolEntry && entry.playerPoolEntry.appliedStatTotal) || 0;
+    return { id:String(p.id||entry.playerId||""), name:p.fullName||("id "+(entry.playerId||"?")),
+             pos: POS[p.defaultPositionId]||"?", team: PRO[p.proTeamId]||"",
+             slot: SLOT[entry.lineupSlotId] || String(entry.lineupSlotId),
+             starter: SLOT[entry.lineupSlotId]!=="BN" && SLOT[entry.lineupSlotId]!=="IR",
+             pts: applied };
+  }
+  function buildTeam(t){
+    const entries = ((t.roster||{}).entries)||[];
+    const players = entries.map(playerOf);
+    return {
+      id: t.id, name: teamName(t), record: recOf(t), pf: pf(t), pa: pa(t),
+      moves: (t.transactionCounter&&t.transactionCounter.acquisitions)||0,
+      players,
+      starters: players.filter(p=>p.starter),
+      bench: players.filter(p=>!p.starter && p.slot!=="IR"),
+    };
+  }
+
+  async function load(){
+    const url = `${LEAGUE.espnProxy}?league=${encodeURIComponent(LEAGUE.id)}&season=${encodeURIComponent(LEAGUE.season)}`
+      + `&view=mTeam&view=mRoster&view=mMatchup&view=mSettings&view=mStandings&view=mSchedule`;
+    const d = await jraw(url);
+    if(d && d.error){
+      if(d.error==="espn_auth_expired") return { authExpired:true };
+      if(d.error==="server_not_configured") return { notConfigured:true };
+      throw new Error(d.message || d.error);
+    }
+    const settings = d.settings||{};
+    const sched = settings.scheduleSettings || {};
+    const regWeeks = sched.matchupPeriodCount || 14;
+    const playoffTeams = sched.playoffTeamCount || 6;
+    const week = (d.status && d.status.currentMatchupPeriod) || d.scoringPeriodId || 1;
+    const teams = (d.teams||[]).map(buildTeam);
+    const byId = {}; teams.forEach(t=>byId[t.id]=t);
+
+    // games from schedule (played = has totalPoints and matchupPeriod < current or completed)
+    const games = (d.schedule||[]).filter(g=>g.home&&g.away&&g.home.teamId!=null&&g.away.teamId!=null).map(g=>({
+      period: g.matchupPeriodId,
+      homeId: g.home.teamId, awayId: g.away.teamId,
+      homePts: g.home.totalPoints||0, awayPts: g.away.totalPoints||0,
+      winner: g.winner,  // "HOME" | "AWAY" | "UNDECIDED"
+    }));
+
+    return {
+      provider:"espn", name: settings.name || LEAGUE.name, size: settings.size || teams.length,
+      week, regWeeks, playoffStart: regWeeks+1, playoffTeams,
+      teams, byId, games,
+    };
+  }
+  return { load };
+})();
+
+/* ---------- provider: Sleeper (stub for later — public API, no secret) ---------- */
+providers.sleeper = (function(){
+  async function load(){ throw new Error("Sleeper provider not enabled yet for this hub."); }
+  return { load };
+})();
+
+/* ============================ INSIGHTS ============================ */
+
+// completed games only (a game with a winner set, or a period before the current week)
+function completedGames(D){ return D.games.filter(g=>(g.winner==="HOME"||g.winner==="AWAY") || g.period < D.week); }
+
+function powerRankings(D){
+  // rank by points-for (record shown); PF is the stable signal early
+  return D.teams.slice().sort((a,b)=> b.pf-a.pf || (b.record.w-a.record.w))
+    .map((t,i)=>({ rank:i+1, name:t.name, pf:t.pf, rec:t.record }));
+}
+
+function superlatives(D){
+  const cg = completedGames(D);
+  if(!cg.length) return null;
+  // per-team single-game scores across completed games
+  const scores = [];  // {teamId, name, pts, oppPts, won, period}
+  cg.forEach(g=>{
+    scores.push({ id:g.homeId, name:D.byId[g.homeId]?.name, pts:g.homePts, oppPts:g.awayPts, won:g.homePts>g.awayPts, period:g.period });
+    scores.push({ id:g.awayId, name:D.byId[g.awayId]?.name, pts:g.awayPts, oppPts:g.homePts, won:g.awayPts>g.homePts, period:g.period });
+  });
+  const byPts = scores.slice().sort((a,b)=>b.pts-a.pts);
+  const high = byPts[0], low = byPts[byPts.length-1];
+  // margins
+  const withMargin = cg.map(g=>({ ...g, margin:Math.abs(g.homePts-g.awayPts),
+    hi: g.homePts>g.awayPts?g.homeId:g.awayId, lo: g.homePts>g.awayPts?g.awayId:g.homeId,
+    hiPts:Math.max(g.homePts,g.awayPts), loPts:Math.min(g.homePts,g.awayPts) }));
+  const blowout = withMargin.slice().sort((a,b)=>b.margin-a.margin)[0];
+  const nailbiter = withMargin.slice().sort((a,b)=>a.margin-b.margin)[0];
+  // unlucky = highest-scoring loser; lucky = lowest-scoring winner
+  const losers = scores.filter(s=>!s.won).sort((a,b)=>b.pts-a.pts);
+  const winners = scores.filter(s=>s.won).sort((a,b)=>a.pts-b.pts);
+  const unlucky = losers[0], lucky = winners[0];
+  return { high, low, blowout, nailbiter, unlucky, lucky };
+}
+
+// points left on bench: best-possible lineup vs actual (approx — uses starter slot counts)
+function benchPoints(D){
+  // count how many of each startable slot the team actually started, then see if a bench player
+  // at an eligible position outscored a started player. Simple honest approx: sum of (best bench swap gains).
+  const out = D.teams.map(t=>{
+    const startPts = t.starters.reduce((s,p)=>s+(p.pts||0),0);
+    // greedy: for each starter, if a bench player of the same core pos scored more, count the gain
+    const benchByPos = {};
+    t.bench.forEach(p=>{ (benchByPos[p.pos]=benchByPos[p.pos]||[]).push(p.pts||0); });
+    Object.values(benchByPos).forEach(a=>a.sort((x,y)=>y-x));
+    let gain = 0;
+    const used = {};
+    t.starters.forEach(s=>{
+      const pool = benchByPos[s.pos]; if(!pool||!pool.length) return;
+      const idx = used[s.pos]||0;
+      if(pool[idx]!=null && pool[idx] > (s.pts||0)){ gain += pool[idx]-(s.pts||0); used[s.pos]=idx+1; }
+    });
+    return { name:t.name, startPts, left: Math.round(gain*10)/10 };
+  }).sort((a,b)=>b.left-a.left);
+  return out;
+}
+
+function positionalLeaders(D){
+  const best = {};  // pos -> {name, team, pts, owner}
+  D.teams.forEach(t=>t.players.forEach(p=>{
+    if(!STARTABLE_POS.includes(p.pos)) return;
+    if(!best[p.pos] || p.pts > best[p.pos].pts) best[p.pos] = { player:p.name, team:p.team, pts:p.pts, owner:t.name };
+  }));
+  return best;
+}
+
+function upcomingMatchups(D){
+  return D.games.filter(g=>g.period===D.week).map(g=>({
+    home:D.byId[g.homeId], away:D.byId[g.awayId],
+    homePts:g.homePts, awayPts:g.awayPts, live:(g.homePts||g.awayPts)>0
+  }));
+}
+
+function paintInsights(){
+  const D = DATA; const el = document.getElementById("pane-insights");
+  if(!D){ el.innerHTML = `<div class="note">No data.</div>`; return; }
+  const cg = completedGames(D);
+  const early = cg.length===0 || D.week<=2;
+  const s = [];
+
+  if(early){
+    s.push(`<div class="card"><div class="cap">It's early (Week ${D.week}). Small samples are noisy, so treat these as fun, not gospel. Power rankings use points-for, which is more stable than W-L this early.</div></div>`);
+  }
+
+  // Power rankings
+  s.push(`<div class="card"><h2>Power Rankings</h2><div class="cap">By total points-for (record shown).</div><div class="rows">`
+    + powerRankings(D).map(r=>`<div class="row">
+        <span class="rk">${r.rank}</span>
+        <span class="nm">${esc(r.name)}</span>
+        <span class="val">${pts(r.pf)}<span class="rec">${r.rec.w}-${r.rec.l}${r.rec.t?"-"+r.rec.t:""}</span></span>
+      </div>`).join("") + `</div></div>`);
+
+  // Superlatives
+  const sup = superlatives(D);
+  if(sup){
+    const tile=(cls,k,v,d)=>`<div class="tile ${cls}"><div class="k">${k}</div><div class="v">${esc(v)}</div><div class="d">${esc(d)}</div></div>`;
+    s.push(`<div class="card"><h2>Weekly Superlatives</h2><div class="cap">From completed games.</div><div class="grid">`
+      + tile("good","Highest Scorer", sup.high.name||"—", `${pts(sup.high.pts)} pts`)
+      + tile("bad","Lowest Scorer", sup.low.name||"—", `${pts(sup.low.pts)} pts`)
+      + tile("","Biggest Blowout", `${esc(D.byId[sup.blowout.hi]?.name||"—")}`, `beat ${esc(D.byId[sup.blowout.lo]?.name||"—")} by ${pts(sup.blowout.margin)}`)
+      + tile("","Closest Game", `${esc(D.byId[sup.nailbiter.hi]?.name||"—")}`, `edged ${esc(D.byId[sup.nailbiter.lo]?.name||"—")} by ${pts(sup.nailbiter.margin)}`)
+      + tile("luck","Unlucky (high-scoring loss)", sup.unlucky?.name||"—", sup.unlucky?`${pts(sup.unlucky.pts)} pts, still lost`:"—")
+      + tile("luck","Lucky (low-scoring win)", sup.lucky?.name||"—", sup.lucky?`${pts(sup.lucky.pts)} pts, still won`:"—")
+      + `</div></div>`);
+  }
+
+  // Positional leaders
+  const pl = positionalLeaders(D);
+  const plKeys = STARTABLE_POS.filter(p=>pl[p]);
+  if(plKeys.length){
+    s.push(`<div class="card"><h2>Positional Leaders</h2><div class="cap">Top scorer leaguewide at each position (season points).</div><div class="grid">`
+      + plKeys.map(p=>`<div class="tile pos"><div class="k">${p}</div><div class="v">${esc(pl[p].player)}</div><div class="d">${pts(pl[p].pts)} pts · ${esc(pl[p].owner)}</div></div>`).join("")
+      + `</div></div>`);
+  }
+
+  // Points left on bench
+  const bp = benchPoints(D).filter(x=>x.left>0);
+  if(bp.length){
+    s.push(`<div class="card"><h2>Points Left on the Bench</h2><div class="cap">Approx points a better lineup could have scored (bench player outscored a starter at the same position).</div><div class="rows">`
+      + bp.slice(0,8).map((x,i)=>`<div class="row"><span class="rk">${i+1}</span><span class="nm">${esc(x.name)}</span><span class="val">${pts(x.left)}</span></div>`).join("")
+      + `</div></div>`);
+  }
+
+  // Waiver / transaction activity
+  const active = D.teams.slice().filter(t=>t.moves>0).sort((a,b)=>b.moves-a.moves);
+  if(active.length){
+    s.push(`<div class="card"><h2>Most Active Managers</h2><div class="cap">Roster moves (acquisitions) this season.</div><div class="rows">`
+      + active.slice(0,8).map((t,i)=>`<div class="row"><span class="rk">${i+1}</span><span class="nm">${esc(t.name)}</span><span class="val">${t.moves} moves</span></div>`).join("")
+      + `</div></div>`);
+  }
+
+  // This week's matchups
+  const mus = upcomingMatchups(D);
+  if(mus.length){
+    s.push(`<div class="card"><h2>Week ${D.week} Matchups</h2><div class="cap">${mus.some(m=>m.live)?"Scores update through the week.":"Head-to-head this week."}</div>`
+      + mus.map(m=>`<div class="mu">
+          <div class="side"><div class="tn">${esc(m.home?.name||"—")}</div><div class="tr">${m.home?`${m.home.record.w}-${m.home.record.l}`:""}${m.live?` · ${pts(m.homePts)}`:""}</div></div>
+          <div class="vs">vs</div>
+          <div class="side r"><div class="tn">${esc(m.away?.name||"—")}</div><div class="tr">${m.away?`${m.away.record.w}-${m.away.record.l}`:""}${m.live?` · ${pts(m.awayPts)}`:""}</div></div>
+        </div>`).join("") + `</div>`);
+  }
+
+  el.innerHTML = s.join("");
+}
+
+/* ============================ PLAYOFF SCENARIOS ============================ */
+
+// standings sorted by W, then points-for tiebreaker
+function standings(D){
+  return D.teams.slice().sort((a,b)=> (b.record.w-a.record.w) || (b.pf-a.pf))
+    .map((t,i)=>({ seed:i+1, id:t.id, name:t.name, w:t.record.w, l:t.record.l, t:t.record.t, pf:t.pf }));
+}
+
+function paintPlayoffs(){
+  const D = DATA; const el = document.getElementById("pane-playoffs");
+  if(!D){ el.innerHTML = `<div class="note">No data.</div>`; return; }
+  const st = standings(D);
+  const played = Math.max(0, D.week-1);
+  const gamesLeft = Math.max(0, D.regWeeks - played);
+  const cutoff = D.playoffTeams;
+  const s = [];
+
+  // header / context
+  s.push(`<div class="card"><h2>Playoff Picture</h2>
+    <div class="cap">Top <b>${cutoff}</b> of ${D.size} make the playoffs · ${D.regWeeks}-week regular season · ~${gamesLeft} game(s) left (playoffs start Week ${D.playoffStart}).</div>`);
+  if(gamesLeft >= D.regWeeks-1){
+    s.push(`<div class="cap">It's early — everyone is still alive and almost every scenario is open. This section gets sharper each week as games are played. For now, here's the current seeding by record (points-for breaks ties).</div>`);
+  }
+  s.push(`</div>`);
+
+  // clinch/elim/alive — simple, honest bounds:
+  // best case = win all remaining; worst = lose all. Compare against the current cutoff line.
+  const maxW = t => t.w + gamesLeft;   // if they win out
+  const cutoffTeam = st[cutoff-1];
+  const firstOutW = st[cutoff] ? st[cutoff].w : 0;   // team just outside
+  const lastInMaxIfLose = st[cutoff-1] ? st[cutoff-1].w : 0;
+
+  s.push(`<div class="card"><h2>Standings & Status</h2><div class="cap">W-L, points-for tiebreaker. Status uses win-out / lose-out bounds (early-season honest bounds, not a projection).</div><div class="rows">`);
+  st.forEach((t,i)=>{
+    const inLine = i < cutoff;
+    // ALIVE by default early; only mark clinched/eliminated when math is certain
+    let status="alive", label="ALIVE", why="";
+    if(gamesLeft===0){
+      status = inLine ? "clinch" : "elim"; label = inLine ? "IN" : "OUT";
+    } else {
+      // eliminated if even winning out can't catch the current cutoff team's floor (lose-out)... too strict early -> keep ALIVE
+      const bestFinish = t.w + gamesLeft;
+      const cutoffFloor = (st[cutoff-1]?.w)||0; // current #cutoff wins (won't decrease)
+      if(bestFinish < cutoffFloor && i>=cutoff){ status="elim"; label="OUT"; why="can't catch the cut line even winning out"; }
+      // clinched if worst finish still beats the best possible of the first team out
+      const worstFinish = t.w;
+      const chaserCeil = (st[cutoff]?.w||0) + gamesLeft;
+      if(i<cutoff && worstFinish > chaserCeil){ status="clinch"; label="IN"; why="can't be caught even losing out"; }
+    }
+    const seedNote = inLine ? `seed ${i+1} (in)` : `seed ${i+1} (out by ${((st[cutoff-1]?.w||0) - t.w) || "tiebreak"})`;
+    s.push(`<div class="row">
+      <span class="rk">${i+1}</span>
+      <span class="nm">${esc(t.name)}<span class="sub2">${t.w}-${t.l}${t.t?"-"+t.t:""} · ${pts(t.pf)} pf</span></span>
+      <span class="val"><span class="pill ${status}">${label}</span></span>
+    </div>${why?`<div class="pline" style="padding:0 6px 6px 42px">${esc(t.name)} ${why}.</div>`:``}`);
+  });
+  s.push(`</div></div>`);
+
+  // honest "what needs to happen" note
+  s.push(`<div class="card"><div class="cap">As the season goes on this will show concrete paths ("win 2 of your last 3 and you're in"). With ${gamesLeft} games left for everyone, the field is still wide open. Check back weekly.</div></div>`);
+
+  el.innerHTML = s.join("");
+}
+
+/* ============================ LOAD / SHELL ============================ */
+async function load(){
+  const status=document.getElementById("status"), errbox=document.getElementById("errbox");
+  errbox.innerHTML=""; status.textContent="Loading…";
+  document.getElementById("lgTitle").textContent = LEAGUE.name + " — League Hub";
+  try{
+    const res = await providers[LEAGUE.provider].load();
+    if(res.authExpired){
+      errbox.innerHTML = `<div class="err">🔑 <b>ESPN session expired.</b> The saved cookie no longer works, so live data can't load right now. The league admin needs to refresh <code>ESPN_S2</code> + <code>ESPN_SWID</code> in the Vercel project settings. Everything else here will work again once that's done.</div>`;
+      status.textContent=""; return;
+    }
+    if(res.notConfigured){
+      errbox.innerHTML = `<div class="err">⚙️ The ESPN connection isn't configured on the server yet (missing env vars). No data to show until that's set up.</div>`;
+      status.textContent=""; return;
+    }
+    DATA = res;
+    document.getElementById("sub").textContent = `${DATA.size} teams · ${DATA.season||LEAGUE.season} · Week ${DATA.week}`;
+    paintInsights(); paintPlayoffs();
+    status.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    document.getElementById("foot").innerHTML =
+      `Live from ESPN via a secure serverless proxy (no login or private data is exposed). Points show 0 before kickoff; early-season samples are small. Not affiliated with ESPN.`;
+  }catch(e){
+    errbox.innerHTML = `<div class="err">Couldn't load the league right now: ${esc(e.message)}. Try Refresh in a moment.</div>`;
+    status.textContent="";
+  }
+}
+
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click", ()=>{
+  ACTIVE = t.dataset.tab;
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active", x===t));
+  document.getElementById("pane-insights").classList.toggle("hide", ACTIVE!=="insights");
+  document.getElementById("pane-playoffs").classList.toggle("hide", ACTIVE!=="playoffs");
+  window.scrollTo({top:0,behavior:"smooth"});
+}));
+document.getElementById("refreshBtn").addEventListener("click", load);
+
+load();
+</script>
+</body>
+</html>

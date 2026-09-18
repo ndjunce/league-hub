@@ -1,0 +1,8 @@
+# scratch / local
+_*
+.vercel
+.DS_Store
+node_modules
+*.log
+# never commit the local cookie file (secrets live in Vercel env only)
+data/espn_auth.local.json

@@ -19,3 +19,16 @@ Own repo, self-contained `index.html` + `api/espn.js` proxy + `vercel.json`, sam
 **Verified live (proxy probe):** Royal Crushers returns 12 teams, currentMatchupPeriod 2, playoffTeamCount 7, matchupPeriodCount 14; per-player `appliedStatTotal` (actual, source 0 — NOT projected source 1) available for bench/positional; schedule carries per-team totalPoints + winner for superlatives. Mobile-first (auto-fill grids stack ≤560px; no fixed wide columns).
 
 **NEXT:** create repo `ndjunce/league-hub`, push, import to Vercel, set ESPN_S2/ESPN_SWID env vars, confirm live. Commit author = ndjunce/noreply.
+
+## 2026-09-16 — v2: standings, weekly view, margin-aware superlatives, real names, auto-refresh — WORKS
+Batch of Nick's requested changes (index.html only). League-facing, mobile-first.
+
+1. **Removed "Most Active Managers"** entirely.
+2. **Replaced "Power Rankings" with plain "Standings"** — W-L order, points-for as the tiebreaker column, no editorializing.
+3. **Weekly view = week tabs** inside the Insights tab (Week 1, Week 2, …), default to latest; each tab shows that week's matchups + that week's superlatives. Built from ESPN schedule per matchupPeriodId.
+4. **Margin of victory** shown on each matchup (`+X.X`), and folded into **context-aware lucky/unlucky**: UNLUCKY = lost but scored well (ranked by how many OTHER teams that week it would've beaten + beat-median + small margin); LUCKY = won but scored poorly (how many outscored them, below-median, small margin). Verified live Week 1: UNLUCKY = Thor (116.4, lost, would've beaten 6), LUCKY = Ben (113.3, won, 7 outscored him) — real context awareness, not just "high score that lost."
+5. **Auto-refresh:** live-on-load + a light `setInterval` re-pull every ~2.5 min (checkbox, on by default, pauses when tab hidden), plus an honest "Updated HH:MM" stamp. Foot text explains it re-pulls (doesn't push).
+6. **Real member names** via `MEMBER` map keyed by ESPN teamId (immune to name edits). Reconciled the two fuzzy ones against the LIVE 963488 team list: id 17 "Mr. Beer's Boys" = Zach, id 13 "5" = Evan. Resolved `disp`/`short` on each team at build; all render sites (standings, superlatives, matchups, bench, positional owners, playoff standings) use real names; falls back to ESPN team name if unmapped. All 12 verified mapping correctly.
+
+**Verified (node, live Royal Crushers + syntax):** JS parses clean; Most Active Managers + Power Rankings gone; Standings/week-tabs/margin/member-map/auto-refresh all present; all 12 names map; context-aware superlatives produce correct Week 1 output. Mobile-first (week tabs wrap, auto-fill grids stack ≤560px).
+**Freeze before v2:** v1 pushed at 579cd9d. Commit author = ndjunce/noreply. Blast radius: this repo's index.html only. Live: https://royalcrushersleaguehub.vercel.app/

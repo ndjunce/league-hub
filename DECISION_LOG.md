@@ -72,3 +72,14 @@ New "🔁 Trade Block" tab on the Hub. Per the FINALIZED spec: SIMPLE + FACTUAL 
 **Verified (node + live):** JS parses clean; all pieces present; TE/RB thresholds correct; Nick 3TE=surplus; PPG dynamic; top-3 correct; no hardcoded games count. Mobile-first (names no longer clip; grids scroll).
 **Freeze before:** Trade Block at 0417e6c. Commit ndjunce/noreply.
 ### Logged for LATER (spec #5, NOT this build): map these member logos on Nick's PRIVATE dashboard for cross-league people (People Map). Separate from this league-facing Hub.
+
+## 2026-09-18 — v6: ROYAL PURPLE + GOLD reskin + branded banner — WORKS (skin only)
+Visual identity so the Hub looks clearly different from the Busch Apple trade tool (that's navy/blue analytics). Content/data/logic UNCHANGED — CSS theme + header + font only.
+
+- **Palette repaletted via `:root` vars** (cascades everywhere): purple-tinted near-black bg (`--ink:#120a1f`), purple charcoal panels (`--panel:#1c1230`), purple borders, lavender muted text; **accent blue → ROYAL PURPLE `#8b5cf6`** (+ deeper `--accent2:#6d28d9`); GOLD kept/tuned (`--gold:#e6b800`). Winner/surplus GREEN kept, red kept. Swapped the 3 hardcoded blue `rgba(74,168,255,…)` literals (active tab, me-row, week-tab) → purple `rgba(139,92,246,…)`. Verified zero blue literals remain.
+- **Branded banner header:** gradient purple banner (`linear-gradient(135deg,#3b1a63→#5b2a86→#2a1147)`) with gold sheen; "ROYAL CRUSHERS" as a big **Oswald** (Google display font, loaded via `<link>`) gold-gradient title (clip-text with a solid `#e6b800` fallback so it's never invisible), "League Hub" subtitle in letter-spaced Oswald. Body font stays the clean system stack (legible).
+- **Logo slot:** header has a commented `<img class="banner-logo">` slot + `.banner-logo` CSS ready — dropping a real Royal Crushers logo later is a one-line change; styled text is the fallback for now. JS sets the banner title from `LEAGUE.name.toUpperCase()` (works if re-pointed to another league); `document.title` stays "Royal Crushers League Hub".
+- **v5 member avatars** unchanged and look good on purple (round, bordered).
+
+**Verified:** JS parses clean; palette + banner + Oswald + logo slot all present; no leftover blue; gold-title fallback color set. Mobile-first: banner uses `clamp()` for the title (30→54px), flex layout, no overflow. Reversible skin.
+**Freeze before:** tag `good-hub-v5` → 972bd7d. Commit ndjunce/noreply. Blast radius: index.html CSS/header only — no data/proxy/logic/sections changed. Did NOT touch the trade tool (differentiation is the whole point).

@@ -48,3 +48,6 @@ Correctness + clarity fixes Nick found.
 
 **Verified (node + syntax):** JS parses clean; benchPoints function + render gone; no "edged"; all-week tabs 1..14 default to current; winner-highlight muRow + score-on-each-side; future/scheduled handling; live Week-1 results render correctly (Riley def Charlie +43.8, Henry def Thor +5.1, etc.). Mobile-first unchanged.
 **Freeze before v3:** v2 at f077ef6. Commit author = ndjunce/noreply.
+
+## 2026-09-18 — v4: rename "League Hub" → "Royal Crushers League Hub" — WORKS
+Trivial display-only rename. Updated the static `<title>` and `<h1>` fallbacks to "Royal Crushers League Hub", and the JS now builds the header + `document.title` dynamically from config: `hubTitle = \`${LEAGUE.name} League Hub\`` (LEAGUE.name = "Royal Crushers"), so it stays correct if the hub is ever re-pointed at another league. Static fallbacks match the dynamic value. No data/proxy/logic touched; JS parses clean. Commit ndjunce/noreply. Freeze before: v3 at 80e47b7.

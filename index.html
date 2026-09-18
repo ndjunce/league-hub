@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>League Hub</title>
+<title>Royal Crushers League Hub</title>
 <style>
   :root{
     --ink:#0a0e14; --panel:#111823; --panel2:#0d131c; --line:#1e2836;
@@ -92,7 +92,7 @@
 <body>
 <div class="wrap">
   <header>
-    <h1 id="lgTitle">League Hub</h1>
+    <h1 id="lgTitle">Royal Crushers League Hub</h1>
     <div class="sub" id="sub">Loading…</div>
   </header>
 
@@ -514,7 +514,9 @@ function paintPlayoffs(){
 async function load(){
   const status=document.getElementById("status"), errbox=document.getElementById("errbox");
   errbox.innerHTML=""; status.textContent="Loading…";
-  document.getElementById("lgTitle").textContent = LEAGUE.name + " — League Hub";
+  const hubTitle = `${LEAGUE.name} League Hub`;
+  document.getElementById("lgTitle").textContent = hubTitle;
+  document.title = hubTitle;
   try{
     const res = await providers[LEAGUE.provider].load();
     if(res.authExpired){

@@ -70,6 +70,8 @@
   .mu .tr{color:var(--mut);font-size:11.5px;font-variant-numeric:tabular-nums}
   .mu .vs{color:var(--mut);font-size:11px;font-weight:800;text-align:center}
   .mu .mov{color:var(--grn);font-weight:800;font-variant-numeric:tabular-nums}
+  .mu .side.win .tn{color:var(--txt)} .mu .side .tn{color:var(--mut)}
+  .mu .side.win .tr{color:var(--txt);font-weight:800} .mu .side .tr{color:var(--mut);font-weight:700}
   /* week tabs */
   .wtabs{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 12px}
   .wtab{padding:5px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);
@@ -168,19 +170,31 @@ providers.espn = (function(){
   const pf = t => (t.record&&t.record.overall&&t.record.overall.pointsFor)||0;
   const pa = t => (t.record&&t.record.overall&&t.record.overall.pointsAgainst)||0;
 
-  function playerOf(entry){
+  // actual points a player scored in a specific week (source 0 = actual, split 1 = weekly). null if none.
+  function weekActual(p, wk){
+    if(!p.stats) return null;
+    const s = p.stats.find(x=>x.statSourceId===0 && x.statSplitTypeId===1 && x.scoringPeriodId===wk);
+    return s ? Math.round((s.appliedTotal||0)*10)/10 : null;
+  }
+  function playerOf(entry, curWeek){
     const p = (entry.playerPoolEntry && entry.playerPoolEntry.player) || entry.player || {};
-    // actual applied points for the current scoring period (source 0 = actual; NOT projected source 1)
-    const applied = (entry.playerPoolEntry && entry.playerPoolEntry.appliedStatTotal) || 0;
+    const applied = (entry.playerPoolEntry && entry.playerPoolEntry.appliedStatTotal) || 0; // season-to-date actual
+    // per-week actual points map for every week this player has a stat line
+    const byWeek = {};
+    (p.stats||[]).forEach(s=>{ if(s.statSourceId===0 && s.statSplitTypeId===1 && s.scoringPeriodId!=null) byWeek[s.scoringPeriodId] = Math.round((s.appliedTotal||0)*10)/10; });
     return { id:String(p.id||entry.playerId||""), name:p.fullName||("id "+(entry.playerId||"?")),
              pos: POS[p.defaultPositionId]||"?", team: PRO[p.proTeamId]||"",
+             eligible: (p.eligibleSlots||[]).slice(),          // raw slot ids the player can fill
              slot: SLOT[entry.lineupSlotId] || String(entry.lineupSlotId),
+             slotId: entry.lineupSlotId,
              starter: SLOT[entry.lineupSlotId]!=="BN" && SLOT[entry.lineupSlotId]!=="IR",
-             pts: applied };
+             onIR: SLOT[entry.lineupSlotId]==="IR",
+             pts: applied,                                     // season total (positional leaders)
+             byWeek };                                         // {week: actualPts}
   }
-  function buildTeam(t){
+  function buildTeam(t, curWeek){
     const entries = ((t.roster||{}).entries)||[];
-    const players = entries.map(playerOf);
+    const players = entries.map(e=>playerOf(e, curWeek));
     const tn = teamName(t);
     return {
       id: t.id, name: tn, disp: memberName(t.id, tn), short: memberShort(t.id, tn),
@@ -188,7 +202,7 @@ providers.espn = (function(){
       moves: (t.transactionCounter&&t.transactionCounter.acquisitions)||0,
       players,
       starters: players.filter(p=>p.starter),
-      bench: players.filter(p=>!p.starter && p.slot!=="IR"),
+      bench: players.filter(p=>!p.starter && !p.onIR),
     };
   }
 
@@ -206,10 +220,19 @@ providers.espn = (function(){
     const regWeeks = sched.matchupPeriodCount || 14;
     const playoffTeams = sched.playoffTeamCount || 6;
     const week = (d.status && d.status.currentMatchupPeriod) || d.scoringPeriodId || 1;
-    const teams = (d.teams||[]).map(buildTeam);
+    const teams = (d.teams||[]).map(t=>buildTeam(t, week));
     const byId = {}; teams.forEach(t=>byId[t.id]=t);
 
-    // games from schedule (played = has totalPoints and matchupPeriod < current or completed)
+    // lineup slot config (slotId -> count) for the exact optimal-lineup solve. Only slots with count>0
+    // that aren't bench/IR are startable slots.
+    const slotCounts = (settings.rosterSettings && settings.rosterSettings.lineupSlotCounts) || {};
+    const startSlots = []; // list of startable slotIds, one entry per slot (e.g. RB appears twice if 2 RB)
+    Object.keys(slotCounts).forEach(sid=>{
+      const id = Number(sid), n = slotCounts[sid]||0, lbl = SLOT[id];
+      if(n>0 && lbl!=="BN" && lbl!=="IR") for(let i=0;i<n;i++) startSlots.push(id);
+    });
+
+    // games from schedule; keep winner + a "played" flag (has any points). Live current week included.
     const games = (d.schedule||[]).filter(g=>g.home&&g.away&&g.home.teamId!=null&&g.away.teamId!=null).map(g=>({
       period: g.matchupPeriodId,
       homeId: g.home.teamId, awayId: g.away.teamId,
@@ -220,6 +243,7 @@ providers.espn = (function(){
     return {
       provider:"espn", name: settings.name || LEAGUE.name, size: settings.size || teams.length,
       week, regWeeks, playoffStart: regWeeks+1, playoffTeams,
+      startSlots,
       teams, byId, games,
     };
   }
@@ -311,27 +335,10 @@ function weekSuperlatives(D, wk){
   return { high, low, blowout, nailbiter, unlucky, lucky, median };
 }
 
-// points left on bench: best-possible lineup vs actual (approx — uses starter slot counts)
-function benchPoints(D){
-  // count how many of each startable slot the team actually started, then see if a bench player
-  // at an eligible position outscored a started player. Simple honest approx: sum of (best bench swap gains).
-  const out = D.teams.map(t=>{
-    const startPts = t.starters.reduce((s,p)=>s+(p.pts||0),0);
-    // greedy: for each starter, if a bench player of the same core pos scored more, count the gain
-    const benchByPos = {};
-    t.bench.forEach(p=>{ (benchByPos[p.pos]=benchByPos[p.pos]||[]).push(p.pts||0); });
-    Object.values(benchByPos).forEach(a=>a.sort((x,y)=>y-x));
-    let gain = 0;
-    const used = {};
-    t.starters.forEach(s=>{
-      const pool = benchByPos[s.pos]; if(!pool||!pool.length) return;
-      const idx = used[s.pos]||0;
-      if(pool[idx]!=null && pool[idx] > (s.pts||0)){ gain += pool[idx]-(s.pts||0); used[s.pos]=idx+1; }
-    });
-    return { disp:t.disp, startPts, left: Math.round(gain*10)/10 };
-  }).sort((a,b)=>b.left-a.left);
-  return out;
-}
+// NOTE: "Points Left on the Bench" was REMOVED in v3. A truly-exact figure needs each week's
+// HISTORICAL started lineup, but ESPN's mRoster only exposes the CURRENT roster (which churns via
+// adds/drops/lineup changes), so a past week's optimal-vs-actual can't be computed exactly. Per the
+// "exact or gone" rule, it's gone rather than shipping a misleading approximation.
 
 function positionalLeaders(D){
   const best = {};  // pos -> {name, team, pts, owner}
@@ -364,41 +371,53 @@ function paintInsights(){
         <span class="val">${r.rec.w}-${r.rec.l}${r.rec.t?"-"+r.rec.t:""}<span class="rec">${pts(r.pf)} pf</span></span>
       </div>`).join("") + `</div></div>`);
 
-  // --- WEEKLY VIEW (tabs: each week with games) ---
-  const weeks = completedWeeks(D);
-  // include the current week too (may be live/in-progress) so users can watch it
-  const allWeeks = [...new Set([...weeks, D.week])].sort((a,b)=>a-b);
-  if(VIEW_WEEK==null || !allWeeks.includes(VIEW_WEEK)) VIEW_WEEK = allWeeks[allWeeks.length-1]; // default = latest
+  // --- WEEKLY VIEW: tabs for ALL regular-season weeks; default = current week ---
+  const allWeeks = []; for(let w=1; w<=D.regWeeks; w++) allWeeks.push(w);
+  if(VIEW_WEEK==null || !allWeeks.includes(VIEW_WEEK)) VIEW_WEEK = D.week; // default = current week
   const wk = VIEW_WEEK;
+  const isCurrent = wk === D.week;
+  const isFuture = wk > D.week;
 
   const weekTabs = `<div class="wtabs">` + allWeeks.map(w =>
-    `<span class="wtab ${w===wk?'on':''}" data-wk="${w}">Week ${w}</span>`).join("") + `</div>`;
+    `<span class="wtab ${w===wk?'on':''}${w===D.week?' cur':''}" data-wk="${w}">Wk ${w}</span>`).join("") + `</div>`;
 
-  const wg = weekGames(D, wk).filter(g=>(g.homePts||g.awayPts)>0);
-  const anyScores = wg.length>0;
-  let weekBody = `<div class="cap">No scores yet for Week ${wk}.</div>`;
-  if(anyScores){
-    weekBody = wg.map(g=>{
-      const wId=g.winId, lId=g.loseId;
-      const top = g.tie ? [g.homeId,g.awayId] : [wId,lId];
-      return `<div class="mu">
-        <div class="side"><div class="tn">${esc(shortOf(g.homeId))}</div><div class="tr">${pts(g.homePts)}</div></div>
-        <div class="vs">${g.tie?"tie":`<span class="mov">+${pts(g.margin)}</span>`}</div>
-        <div class="side r"><div class="tn">${esc(shortOf(g.awayId))}</div><div class="tr">${pts(g.awayPts)}</div></div>
-      </div>`;
-    }).join("");
+  const wgAll = weekGames(D, wk);
+  const wgScored = wgAll.filter(g=>(g.homePts||g.awayPts)>0);
+  const anyScores = wgScored.length>0;
+
+  // matchup row: score on EACH side, winner highlighted, margin attached to the winner. No lone middle number.
+  function muRow(g){
+    const homeWins = !g.tie && g.homePts>g.awayPts;
+    const awayWins = !g.tie && g.awayPts>g.homePts;
+    const scored = (g.homePts||g.awayPts)>0;
+    const homeSide = `<div class="side ${homeWins?'win':''}">
+        <div class="tn">${homeWins?'▸ ':''}${esc(shortOf(g.homeId))}</div>
+        <div class="tr">${scored?pts(g.homePts):'—'}${homeWins?` <span class="mov">+${pts(g.margin)}</span>`:''}</div></div>`;
+    const awaySide = `<div class="side r ${awayWins?'win':''}">
+        <div class="tn">${awayWins?'▸ ':''}${esc(shortOf(g.awayId))}</div>
+        <div class="tr">${awayWins?`<span class="mov">+${pts(g.margin)}</span> `:''}${scored?pts(g.awayPts):'—'}</div></div>`;
+    return `<div class="mu">${homeSide}<div class="vs">${g.tie&&scored?'tie':'vs'}</div>${awaySide}</div>`;
   }
 
-  // per-week superlatives (margin- + context-aware)
-  const sup = weekSuperlatives(D, wk);
+  let weekBody;
+  if(isFuture || !anyScores){
+    weekBody = `<div class="cap">${isFuture?`Week ${wk} hasn't been played yet — scheduled matchups:`:`No scores yet for Week ${wk}.`}</div>`
+      + wgAll.map(g=>`<div class="mu"><div class="side"><div class="tn">${esc(shortOf(g.homeId))}</div></div><div class="vs">vs</div><div class="side r"><div class="tn">${esc(shortOf(g.awayId))}</div></div></div>`).join("");
+  } else {
+    const liveNote = isCurrent ? `<div class="cap">${isCurrent?'Week '+wk+' — live/in-progress; finals where games are done.':''}</div>` : "";
+    weekBody = liveNote + wgScored.map(muRow).join("");
+  }
+
+  // per-week superlatives (margin- + context-aware) — only when there are real scores
+  const sup = anyScores ? weekSuperlatives(D, wk) : null;
   let supHtml = "";
   if(sup){
     const tile=(cls,k,v,d)=>`<div class="tile ${cls}"><div class="k">${k}</div><div class="v">${esc(v)}</div><div class="d">${esc(d)}</div></div>`;
-    supHtml = `<div class="cap" style="margin-top:12px">Week ${wk} superlatives</div><div class="grid">`
+    supHtml = `<div class="cap" style="margin-top:12px">Week ${wk} superlatives${isCurrent?' (live)':''}</div><div class="grid">`
       + tile("good","Highest Scorer", shortOf(sup.high.id), `${pts(sup.high.pts)} pts`)
       + tile("bad","Lowest Scorer", shortOf(sup.low.id), `${pts(sup.low.pts)} pts`)
       + tile("","Biggest Blowout", shortOf(sup.blowout.winId), `beat ${esc(shortOf(sup.blowout.loseId))} by ${pts(sup.blowout.margin)}`)
-      + tile("","Closest Game", shortOf(sup.nailbiter.winId), `edged ${esc(shortOf(sup.nailbiter.loseId))} by ${pts(sup.nailbiter.margin)}`)
+      + tile("","Closest Game", shortOf(sup.nailbiter.winId), `won by just ${pts(sup.nailbiter.margin)} over ${esc(shortOf(sup.nailbiter.loseId))}`)
       + (sup.unlucky ? tile("luck","Unlucky", shortOf(sup.unlucky.id),
           `${pts(sup.unlucky.pts)} pts and LOST${sup.unlucky.wouldBeat?` — would've beaten ${sup.unlucky.wouldBeat} other team${sup.unlucky.wouldBeat>1?"s":""} this week`:""}${sup.unlucky.margin!=null?`, by just ${pts(sup.unlucky.margin)}`:""}`) : "")
       + (sup.lucky ? tile("luck","Lucky", shortOf(sup.lucky.id),
@@ -417,13 +436,7 @@ function paintInsights(){
       + `</div></div>`);
   }
 
-  // --- Points left on bench (season) ---
-  const bp = benchPoints(D).filter(x=>x.left>0);
-  if(bp.length){
-    s.push(`<div class="card"><h2>Points Left on the Bench</h2><div class="cap">Approx points a better lineup could have scored (a bench player outscored a starter at the same position).</div><div class="rows">`
-      + bp.slice(0,8).map((x,i)=>`<div class="row"><span class="rk">${i+1}</span><span class="nm">${esc(x.disp)}</span><span class="val">${pts(x.left)}</span></div>`).join("")
-      + `</div></div>`);
-  }
+  // (Points Left on the Bench removed in v3 — can't be computed exactly for past weeks; see note above.)
 
   el.innerHTML = s.join("");
 

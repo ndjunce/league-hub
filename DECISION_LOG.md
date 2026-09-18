@@ -32,3 +32,19 @@ Batch of Nick's requested changes (index.html only). League-facing, mobile-first
 
 **Verified (node, live Royal Crushers + syntax):** JS parses clean; Most Active Managers + Power Rankings gone; Standings/week-tabs/margin/member-map/auto-refresh all present; all 12 names map; context-aware superlatives produce correct Week 1 output. Mobile-first (week tabs wrap, auto-fill grids stack ≤560px).
 **Freeze before v2:** v1 pushed at 579cd9d. Commit author = ndjunce/noreply. Blast radius: this repo's index.html only. Live: https://royalcrushersleaguehub.vercel.app/
+
+## 2026-09-18 — v3: bench REMOVED, weekly-results clarity, live current week, all-week tabs — WORKS
+Correctness + clarity fixes Nick found.
+
+1. **"Points Left on the Bench" REMOVED** (per "exact or gone"). Investigated an exact optimal-legal-lineup solver: I DID build a correct max-weight assignment over the real startable slots (QB,RB,RB,WR,WR,TE,D/ST,K,FLEX from `rosterSettings.lineupSlotCounts`) respecting each player's `eligibleSlots`, and it produced Nick Week 1 = 9.3 (matching the spec's stated real value). BUT verifying "actual started" against the schedule's real per-team Week-1 totals exposed the blocker: ESPN's `mRoster` only exposes the CURRENT roster, and rosters have churned since Week 1 (my current-roster reconstruction gave Nick 123.4 vs the true historically-started 104.7 — mismatch on 11 of 12 teams). So a PAST week's optimal-vs-actual can't be computed exactly from available data. Exact is impossible for past weeks → REMOVED rather than ship a misleading number. (Left a code comment explaining why.)
+
+2. **Weekly Results redesigned** — killed the ambiguous lone middle number. Each matchup now shows the score on EACH side, the WINNER highlighted (brighter text + ▸ marker), and the margin (`+X.X`) attached to the winner's side. `vs` in the middle (or `tie`). New `.side.win` styling.
+
+3. **Live current week on load** — week tabs default to the CURRENT week (Week 2); current-week games render live/in-progress with finals where done. Verified: Week 2 currently returns 0/UNDECIDED (Thu 9/18, games not yet played) — handled honestly (shows matchups, fills scores as they arrive via the existing ~2.5-min auto-refresh). No hidden `totalPointsLive` field exists; scores simply populate in `totalPoints` once games play.
+
+4. **Week tabs for ALL weeks** — tabs now Wk1..Wk{regWeeks} (1–14), not just completed. Past = final results, current = live, future = "hasn't been played yet" + scheduled matchup preview (names only, no fake scores).
+
+5. **Wording:** closest game no longer says "edged … by" — now "won by just X over …". Removed the "edge" phrasing per Nick.
+
+**Verified (node + syntax):** JS parses clean; benchPoints function + render gone; no "edged"; all-week tabs 1..14 default to current; winner-highlight muRow + score-on-each-side; future/scheduled handling; live Week-1 results render correctly (Riley def Charlie +43.8, Henry def Thor +5.1, etc.). Mobile-first unchanged.
+**Freeze before v3:** v2 at f077ef6. Commit author = ndjunce/noreply.

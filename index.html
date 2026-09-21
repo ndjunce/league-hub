@@ -122,6 +122,11 @@
        overflow:hidden;background:var(--panel2);border:1px solid var(--line);vertical-align:middle}
   .mav img{width:100%;height:100%;object-fit:cover;display:block}
   .mav-fb{width:100%;height:100%;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--mut)}
+  /* player image (top scorers): headshot/team-logo round, position-color initial fallback */
+  .pav{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;border-radius:50%;
+       overflow:hidden;background:var(--panel2);border:1px solid var(--line);vertical-align:middle}
+  .pav img{width:100%;height:100%;object-fit:cover;display:block}
+  .pav-fb{width:100%;height:100%;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff}
   /* At-a-glance list (fixed: full names, no clip) */
   .ag-list{display:flex;flex-direction:column;gap:2px}
   .ag-row{display:flex;align-items:center;gap:9px;padding:8px 4px;border-top:1px solid var(--line);flex-wrap:wrap}
@@ -232,6 +237,30 @@ function avatarHtml(id, label, size){
   const initial = esc((String(label||"?").trim()[0]||"?").toUpperCase());
   if(url) return `<span class="mav" style="width:${px}px;height:${px}px"><img src="${url}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="mav-fb" style="display:none">${initial}</span></span>`;
   return `<span class="mav" style="width:${px}px;height:${px}px"><span class="mav-fb" style="display:flex">${initial}</span></span>`;
+}
+
+// player image: ESPN headshot (by player id) -> NFL team logo (by abbrev) -> position-colored initial.
+// Chained onerror so a missing headshot falls back to the team logo, then to a clean initial (never a broken img).
+const POS_COLOR = {QB:"#c44",RB:"#2a8",WR:"#48c",TE:"#e69420",DEF:"#777",K:"#95a"};
+function playerImgHtml(pid, team, pos, size){
+  const px = size||18;
+  const abbr = (team||"").toLowerCase();
+  const head = pid ? `https://a.espncdn.com/i/headshots/nfl/players/full/${encodeURIComponent(pid)}.png` : "";
+  const logo = abbr ? `https://a.espncdn.com/i/teamlogos/nfl/500/${encodeURIComponent(abbr)}.png` : "";
+  const initial = esc((String(pos||"?").trim()[0]||"?").toUpperCase());
+  const color = POS_COLOR[pos] || "#666";
+  const fb = `<span class="pav-fb" style="display:none;background:${color}">${initial}</span>`;
+  // build the onerror chain: headshot -> team logo -> initial
+  if(head){
+    const onErr = logo
+      ? `this.onerror=function(){this.style.display='none';this.parentNode.querySelector('.pav-fb').style.display='flex'};this.src='${logo}'`
+      : `this.style.display='none';this.parentNode.querySelector('.pav-fb').style.display='flex'`;
+    return `<span class="pav" style="width:${px}px;height:${px}px"><img src="${head}" alt="" loading="lazy" onerror="${onErr}">${fb}</span>`;
+  }
+  if(logo){
+    return `<span class="pav" style="width:${px}px;height:${px}px"><img src="${logo}" alt="" loading="lazy" onerror="this.style.display='none';this.parentNode.querySelector('.pav-fb').style.display='flex'">${fb}</span>`;
+  }
+  return `<span class="pav" style="width:${px}px;height:${px}px"><span class="pav-fb" style="display:flex;background:${color}">${initial}</span></span>`;
 }
 
 // auto-refresh: light poll so an open tab stays current on game days (does NOT push; re-pulls on interval)
@@ -422,31 +451,32 @@ function weekSuperlatives(D, wk){
   const blowout = games.slice().sort((a,b)=>b.margin-a.margin)[0];
   const nailbiter = games.slice().sort((a,b)=>a.margin-b.margin)[0];
 
-  // UNLUCKY: lost AND scored well relative to the field. Score each loser by (weekRank low=better) +
-  // small margin bonus. Prefer a loser who scored above the median / would've beaten most teams.
-  const losers = scores.filter(s=>!s.won);
+  const others = n - 1;  // number of OTHER teams in the league this week (for "N of M other teams")
+
+  // Mutually exclusive pools: UNLUCKY only from losers, LUCKY only from winners. A team plays once/week,
+  // so a loser can never be lucky and a winner can never be unlucky. Ties are excluded from both.
+  const losers  = scores.filter(s=>!s.won && s.pts!==s.opp);
+  const winners = scores.filter(s=> s.won && s.pts!==s.opp);
+
+  // UNLUCKY: the LOSER whose score would have beaten the most OTHER teams this week (i.e. lost despite a
+  // league-leading-caliber score). wouldBeat = how many of the other teams' scores it topped.
   let unlucky=null;
   if(losers.length){
     unlucky = losers.map(s=>{
-      const r = rankOf(s.pts);                    // 1=best score in league that week
-      const beatMedian = s.pts >= median;
-      // "would have won" count: how many opponents this week scored less than s
       const wouldBeat = scores.filter(o=>o.id!==s.id && o.pts < s.pts).length;
-      const unluckScore = (n - r) + (beatMedian?3:0) + wouldBeat*0.5 + Math.max(0,(15-s.margin))/15; // small margin adds
-      return { ...s, r, wouldBeat, beatMedian, unluckScore };
-    }).sort((a,b)=>b.unluckScore-a.unluckScore)[0];
+      const isTopScore = s.pts === high.pts;      // scored the most in the whole league but still lost
+      return { id:s.id, pts:s.pts, wouldBeat, others, isTopScore };
+    }).sort((a,b)=> b.wouldBeat-a.wouldBeat || b.pts-a.pts)[0];
   }
-  // LUCKY: won AND scored poorly relative to the field. Prefer low weekRank winner, close margin.
-  const winners = scores.filter(s=>s.won);
+  // LUCKY: the WINNER whose score was topped by the most OTHER teams this week (won despite a low score).
+  // wouldLose = how many other teams outscored them; outscored = how many they beat.
   let lucky=null;
   if(winners.length){
     lucky = winners.map(s=>{
-      const r = rankOf(s.pts);
-      const belowMedian = s.pts <= median;
-      const wouldLose = scores.filter(o=>o.id!==s.id && o.pts > s.pts).length; // how many outscored them
-      const luckScore = r + (belowMedian?3:0) + wouldLose*0.5 + Math.max(0,(15-s.margin))/15;
-      return { ...s, r, wouldLose, belowMedian, luckScore };
-    }).sort((a,b)=>b.luckScore-a.luckScore)[0];
+      const wouldLose  = scores.filter(o=>o.id!==s.id && o.pts > s.pts).length;
+      const outscored  = scores.filter(o=>o.id!==s.id && o.pts < s.pts).length;
+      return { id:s.id, pts:s.pts, wouldLose, outscored, others };
+    }).sort((a,b)=> b.wouldLose-a.wouldLose || a.pts-b.pts)[0];
   }
   return { high, low, blowout, nailbiter, unlucky, lucky, median };
 }
@@ -478,7 +508,7 @@ function weekTopScorers(D, wk){
     if(!STARTABLE_POS.includes(p.pos)) return;
     const wp = (p.byWeek||{})[wk];
     if(wp==null) return;
-    (byPos[p.pos]=byPos[p.pos]||[]).push({ player:p.name, team:p.team, ownerId:t.id, owner:t.short, pts:wp });
+    (byPos[p.pos]=byPos[p.pos]||[]).push({ id:p.id, pos:p.pos, player:p.name, team:p.team, ownerId:t.id, owner:t.short, pts:wp });
   }));
   Object.keys(byPos).forEach(P=>{ byPos[P].sort((a,b)=>b.pts-a.pts); byPos[P]=byPos[P].slice(0,3); });
   return byPos;
@@ -560,9 +590,11 @@ function paintInsights(){
       + tile("","Biggest Blowout", shortOf(sup.blowout.winId), `beat ${esc(shortOf(sup.blowout.loseId))} by ${pts(sup.blowout.margin)}`)
       + tile("","Closest Game", shortOf(sup.nailbiter.winId), `won by just ${pts(sup.nailbiter.margin)} over ${esc(shortOf(sup.nailbiter.loseId))}`)
       + (sup.unlucky ? tile("luck","Unlucky", shortOf(sup.unlucky.id),
-          `${pts(sup.unlucky.pts)} pts and LOST${sup.unlucky.wouldBeat?` — would've beaten ${sup.unlucky.wouldBeat} other team${sup.unlucky.wouldBeat>1?"s":""} this week`:""}${sup.unlucky.margin!=null?`, by just ${pts(sup.unlucky.margin)}`:""}`) : "")
+          sup.unlucky.isTopScore
+            ? `${pts(sup.unlucky.pts)} pts — most in the league, but still lost`
+            : `${pts(sup.unlucky.pts)} pts and lost — would've beaten ${sup.unlucky.wouldBeat} of ${sup.unlucky.others} other teams`) : "")
       + (sup.lucky ? tile("luck","Lucky", shortOf(sup.lucky.id),
-          `${pts(sup.lucky.pts)} pts and WON${sup.lucky.wouldLose?` — ${sup.lucky.wouldLose} team${sup.lucky.wouldLose>1?"s":""} outscored them but they still won`:""}${sup.lucky.margin!=null?`, by just ${pts(sup.lucky.margin)}`:""}`) : "")
+          `won with just ${pts(sup.lucky.pts)} pts — only outscored ${sup.lucky.outscored} of ${sup.lucky.others} other teams`) : "")
       + `</div>`;
   }
 
@@ -576,7 +608,7 @@ function paintInsights(){
       const posName = {QB:"QB",RB:"RB",WR:"WR",TE:"TE",DEF:"D/ST",K:"K"};
       s.push(`<div class="card"><h2>Top Scorers — Week ${wk}${isCurrent?' (live)':''}</h2><div class="cap">Highest-scoring players at each position this week.</div><div class="grid">`
         + order.map(P=>`<div class="tile"><div class="k">${posName[P]}</div>`
-            + tops[P].map((x,i)=>`<div class="t3"><span class="t3r">${i+1}</span>${avatarHtml(x.ownerId,x.owner,18)}<span class="t3n">${esc(x.player)}</span><span class="t3o">${esc(x.owner)}</span><span class="t3p">${pts(x.pts)}</span></div>`).join("")
+            + tops[P].map((x,i)=>`<div class="t3"><span class="t3r">${i+1}</span>${playerImgHtml(x.id,x.team,x.pos,18)}<span class="t3n">${esc(x.player)}</span><span class="t3o">${esc(x.owner)}</span><span class="t3p">${pts(x.pts)}</span></div>`).join("")
             + `</div>`).join("")
         + `</div></div>`);
     }

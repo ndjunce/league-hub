@@ -97,3 +97,18 @@ Per LIVE_SCORING_FIX_SPEC.md. ROOT CAUSE (verified live, not assumed): ESPN leav
 **Verification (node vs live proxy):** JS parses clean. Week 1 finals still == raw totalPoints (0 mismatches, all FINAL). Week 2 all 6 matchups non-zero & sensible (117.9/148.9, 126.8/110.4, …), all labeled LIVE, winner=UNDECIDED. 12/12 nonzero sides both weeks.
 
 **Freeze before:** `good-hub-v6` → 26f4d15. Commit ndjunce/noreply. Blast radius: index.html games-build + weekGames + Weekly Results render + CSS only; no data/logic elsewhere changed. Dashboard (private) gets the same ESPN-provider fix later — NOT this task.
+
+## 2026-08-13 — v8: lucky/unlucky fix + top-scorer PLAYER images — WORKS
+Per LEAGUE_HUB_V8_SPEC.md. Superlative-logic + display only; live-scoring/data/proxy untouched.
+
+**1. Lucky/Unlucky (weekSuperlatives):** made the two mutually exclusive and cleaned the wording.
+- Pools separated explicitly: UNLUCKY drawn only from LOSERS (`!won && pts!==opp`), LUCKY only from WINNERS (`won && pts!==opp`); ties excluded from both. A team plays once/week so it can never appear in both boxes.
+- UNLUCKY = loser whose score topped the most OTHER teams that week (`wouldBeat` = # other teams outscored), tiebreak by higher pts. Wording: "117.9 pts and lost — would've beaten 9 of 11 other teams" (or "— most in the league, but still lost" when it was the week's top score).
+- LUCKY = winner topped by the most OTHER teams (`wouldLose`), tiebreak lower pts. Wording: "won with just 104.7 pts — only outscored 4 of 11 other teams".
+- REMOVED the confusing trailing "by just X" (that was the game margin — meaningless in this context). Only computes when the week has real scores.
+
+**2. Top Scorers — player image instead of owner logo.** At 18px all member logos looked identical and were the wrong subject. Added `playerImgHtml(pid, team, pos, size)`: ESPN headshot (`a.espncdn.com/i/headshots/nfl/players/full/{id}.png`) → chained onerror to NFL team logo (`teamlogos/nfl/500/{abbr}.png`) → position-colored initial (`.pav-fb`) — never a broken image. `weekTopScorers` now carries `id` + `pos`. Owner's NAME still shown as text beside the player. Member logos unchanged everywhere else (standings, at-a-glance, positional leaders) where the member IS the subject.
+
+**Verified (node vs live proxy):** JS parses clean. Wk1 unlucky=team8 (116.4, beat 6/11) / lucky=team12 (113.32, outscored 4/11); Wk2 unlucky=team2 (117.9, beat 9/11) / lucky=team5 (104.7, outscored 4/11) — different teams both weeks (mutually exclusive ✓). All presence checks pass (playerImgHtml, id+pos in weekTopScorers, "by just X" gone).
+
+**Freeze before:** good-hub-v7 → 9e9bef1. Commit ndjunce/noreply. Blast radius: weekSuperlatives logic + superlative render + Top Scorers img + playerImgHtml helper + CSS (.pav). No data/live-scoring/proxy change.

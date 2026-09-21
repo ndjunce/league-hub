@@ -83,3 +83,17 @@ Visual identity so the Hub looks clearly different from the Busch Apple trade to
 
 **Verified:** JS parses clean; palette + banner + Oswald + logo slot all present; no leftover blue; gold-title fallback color set. Mobile-first: banner uses `clamp()` for the title (30→54px), flex layout, no overflow. Reversible skin.
 **Freeze before:** tag `good-hub-v5` → 972bd7d. Commit ndjunce/noreply. Blast radius: index.html CSS/header only — no data/proxy/logic/sections changed. Did NOT touch the trade tool (differentiation is the whole point).
+
+## 2026-08-13 — Live scoring fix (current-week LIVE scores) — WORKS
+Per LIVE_SCORING_FIX_SPEC.md. ROOT CAUSE (verified live, not assumed): ESPN leaves matchup `totalPoints=0` for the current/in-progress week until it FINALIZES the fantasy week (Tue after MNF), even though games are played. Reading `totalPoints` alone shows 0 mid-week — that was the "broken live scoring."
+
+**Verified against the live 963488 proxy:** Week 1 (final) matchups carry `totalPoints` (143.26/99.5, …) and have NO `rosterForMatchupPeriod`. Week 2 (current) matchups have `totalPoints=0` but DO carry `home/away.rosterForMatchupPeriod.entries` = exactly the 9 starters (no bench/IR present; `lineupSlotId` reads placeholder 0 in this payload but every entry IS a starter), whose `appliedStatTotal` IS the current-week live points (Gibbs 23.3, Dak 29.76, …). Summing them = 117.9 for the sample team — the real live total.
+
+**FIX (display only, index.html):**
+- Added `liveSideScore(side)` in the games build: prefer `side.totalPoints` when >0 (auto-heals on finalize); else sum `rosterForMatchupPeriod`/`rosterForCurrentScoringPeriod` entries' `appliedStatTotal`, excluding slot 20 (BN) / 21 (IR) defensively.
+- Each game now carries `live` (computed-from-starters and not finalized) and `finalized` (winner set AND totalPoints>0). Threaded both through `weekGames()`.
+- Render: per-game badge **● LIVE** (red) vs **FINAL** (muted) in `muRow`; Weekly Results header explains LIVE = computed from starters while games run, turns FINAL after ESPN locks the week, and that not-yet-kicked-off players show 0 (honest, no fabrication). Superlatives + top-scorers inherit the computed scores automatically (they consume `weekGames`).
+
+**Verification (node vs live proxy):** JS parses clean. Week 1 finals still == raw totalPoints (0 mismatches, all FINAL). Week 2 all 6 matchups non-zero & sensible (117.9/148.9, 126.8/110.4, …), all labeled LIVE, winner=UNDECIDED. 12/12 nonzero sides both weeks.
+
+**Freeze before:** `good-hub-v6` → 26f4d15. Commit ndjunce/noreply. Blast radius: index.html games-build + weekGames + Weekly Results render + CSS only; no data/logic elsewhere changed. Dashboard (private) gets the same ESPN-provider fix later — NOT this task.

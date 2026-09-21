@@ -100,6 +100,9 @@
   .mu .vs{color:var(--mut);font-size:11px;font-weight:800;text-align:center}
   .mu .mov{color:var(--grn);font-weight:800;font-variant-numeric:tabular-nums}
   .mu .side.win .tn{color:var(--txt)} .mu .side .tn{color:var(--mut)}
+  .gstat{display:block;margin-top:3px;font-size:9px;font-weight:800;letter-spacing:.05em}
+  .gstat.live{color:#ff5b5b} .gstat.final{color:var(--mut)}
+  .livetxt{color:#ff5b5b}
   .mu .side.win .tr{color:var(--txt);font-weight:800} .mu .side .tr{color:var(--mut);font-weight:700}
   /* week tabs */
   .wtabs{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 12px}
@@ -320,13 +323,37 @@ providers.espn = (function(){
       if(n>0 && lbl!=="BN" && lbl!=="IR") for(let i=0;i<n;i++) startSlots.push(id);
     });
 
-    // games from schedule; keep winner + a "played" flag (has any points). Live current week included.
-    const games = (d.schedule||[]).filter(g=>g.home&&g.away&&g.home.teamId!=null&&g.away.teamId!=null).map(g=>({
-      period: g.matchupPeriodId,
-      homeId: g.home.teamId, awayId: g.away.teamId,
-      homePts: g.home.totalPoints||0, awayPts: g.away.totalPoints||0,
-      winner: g.winner,  // "HOME" | "AWAY" | "UNDECIDED"
-    }));
+    // Live-score fix: ESPN leaves matchup totalPoints=0 for the current week until it FINALIZES (Tue after MNF),
+    // even though games have been played. For the current/in-progress week, compute each team's live score by
+    // summing its STARTERS' applied points from rosterForMatchupPeriod (excludes bench=20/IR=21). Prefer
+    // totalPoints when >0 so it auto-heals once ESPN finalizes.
+    function liveSideScore(side){
+      const tp = side.totalPoints || 0;
+      if(tp > 0) return { pts: tp, computed:false };            // finalized/populated -> trust it
+      const rost = side.rosterForMatchupPeriod || side.rosterForCurrentScoringPeriod;
+      const entries = (rost && rost.entries) || [];
+      if(!entries.length) return { pts: 0, computed:false };
+      let sum = 0;
+      for(const e of entries){
+        if(e.lineupSlotId===20 || e.lineupSlotId===21) continue;  // exclude bench / IR
+        sum += (e.playerPoolEntry && e.playerPoolEntry.appliedStatTotal) || 0;
+      }
+      return { pts: Math.round(sum*10)/10, computed: sum>0 };     // computed live total from starters
+    }
+    // games from schedule; winner from ESPN when set; scores prefer totalPoints, else computed-from-starters.
+    const games = (d.schedule||[]).filter(g=>g.home&&g.away&&g.home.teamId!=null&&g.away.teamId!=null).map(g=>{
+      const h = liveSideScore(g.home), a = liveSideScore(g.away);
+      const finalized = (g.winner==="HOME" || g.winner==="AWAY" || g.winner==="TIE") && (g.home.totalPoints>0 || g.away.totalPoints>0);
+      return {
+        period: g.matchupPeriodId,
+        homeId: g.home.teamId, awayId: g.away.teamId,
+        homePts: h.pts, awayPts: a.pts,
+        winner: g.winner,  // "HOME" | "AWAY" | "UNDECIDED"
+        // live = scores exist (played) but ESPN hasn't finalized totalPoints yet (computed from starters)
+        live: (h.computed || a.computed) && !finalized,
+        finalized,
+      };
+    });
 
     return {
       provider:"espn", name: settings.name || LEAGUE.name, size: settings.size || teams.length,
@@ -370,6 +397,7 @@ function weekGames(D, wk){
       margin: Math.round(Math.abs(g.homePts-g.awayPts)*10)/10, tie,
       winId: tie?null:(homeWon?g.homeId:g.awayId), loseId: tie?null:(homeWon?g.awayId:g.homeId),
       winPts: Math.max(g.homePts,g.awayPts), losePts: Math.min(g.homePts,g.awayPts),
+      live: !!g.live, finalized: !!g.finalized,
     };
   });
 }
@@ -493,17 +521,20 @@ function paintInsights(){
   const anyScores = wgScored.length>0;
 
   // matchup row: score on EACH side, winner highlighted, margin attached to the winner. No lone middle number.
+  // Per-game status badge: LIVE (computed from starters, not yet finalized) vs FINAL (ESPN finalized totalPoints).
   function muRow(g){
     const homeWins = !g.tie && g.homePts>g.awayPts;
     const awayWins = !g.tie && g.awayPts>g.homePts;
     const scored = (g.homePts||g.awayPts)>0;
+    const badge = g.finalized ? `<span class="gstat final">FINAL</span>`
+                : g.live ? `<span class="gstat live">● LIVE</span>` : "";
     const homeSide = `<div class="side ${homeWins?'win':''}">
         <div class="tn">${homeWins?'▸ ':''}${esc(shortOf(g.homeId))}</div>
         <div class="tr">${scored?pts(g.homePts):'—'}${homeWins?` <span class="mov">+${pts(g.margin)}</span>`:''}</div></div>`;
     const awaySide = `<div class="side r ${awayWins?'win':''}">
         <div class="tn">${awayWins?'▸ ':''}${esc(shortOf(g.awayId))}</div>
         <div class="tr">${awayWins?`<span class="mov">+${pts(g.margin)}</span> `:''}${scored?pts(g.awayPts):'—'}</div></div>`;
-    return `<div class="mu">${homeSide}<div class="vs">${g.tie&&scored?'tie':'vs'}</div>${awaySide}</div>`;
+    return `<div class="mu">${homeSide}<div class="vs">${g.tie&&scored?'tie':'vs'}${badge}</div>${awaySide}</div>`;
   }
 
   let weekBody;
@@ -511,7 +542,10 @@ function paintInsights(){
     weekBody = `<div class="cap">${isFuture?`Week ${wk} hasn't been played yet — scheduled matchups:`:`No scores yet for Week ${wk}.`}</div>`
       + wgAll.map(g=>`<div class="mu"><div class="side"><div class="tn">${esc(shortOf(g.homeId))}</div></div><div class="vs">vs</div><div class="side r"><div class="tn">${esc(shortOf(g.awayId))}</div></div></div>`).join("");
   } else {
-    const liveNote = isCurrent ? `<div class="cap">${isCurrent?'Week '+wk+' — live/in-progress; finals where games are done.':''}</div>` : "";
+    const anyLive = wgScored.some(g=>g.live);
+    const liveNote = anyLive
+      ? `<div class="cap">Week ${wk} — <b class="livetxt">● LIVE</b> scores are computed from starters' points while games are in progress; they turn FINAL once ESPN locks the week (Tue after MNF). Players in games that haven't kicked off yet show 0.</div>`
+      : "";
     weekBody = liveNote + wgScored.map(muRow).join("");
   }
 

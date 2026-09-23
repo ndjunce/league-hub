@@ -112,3 +112,30 @@ Per LEAGUE_HUB_V8_SPEC.md. Superlative-logic + display only; live-scoring/data/p
 **Verified (node vs live proxy):** JS parses clean. Wk1 unlucky=team8 (116.4, beat 6/11) / lucky=team12 (113.32, outscored 4/11); Wk2 unlucky=team2 (117.9, beat 9/11) / lucky=team5 (104.7, outscored 4/11) — different teams both weeks (mutually exclusive ✓). All presence checks pass (playerImgHtml, id+pos in weekTopScorers, "by just X" gone).
 
 **Freeze before:** good-hub-v7 → 9e9bef1. Commit ndjunce/noreply. Blast radius: weekSuperlatives logic + superlative render + Top Scorers img + playerImgHtml helper + CSS (.pav). No data/live-scoring/proxy change.
+
+
+## 2026-09-22 — NEW feature spec: Weekly Stakes / "what this game means" (early-season complement to Playoff Picture)
+Nick's idea: for the current week's matchups (LEAGUEWIDE), show how much each game matters — the win-vs-lose swing —
+so mid-season games have meaning before the playoff math sharpens. Addressed his "is this pointless?" doubt: winning
+always helps, but NOT equally — this surfaces pivotal (two 4-4 teams for the last seed) vs cushion games, and
+leaguewide/who-plays-who mapping matters because other teams' results move your picture (root-for/against games).
+DECIDED: TWO metrics, filterable + combinable (Seeding · Playoff odds · Both). (1) SEEDING/RECORD DELTA — nearly free,
+reuse standings(D) run twice with the game flipped; works Week 1. (2) PLAYOFF-ODDS SWING — enumerate remaining
+outcomes when the tree is small (2^k feasible) → real %, else fall back to win-out/lose-out BOUNDS with an honest
+"too early for exact odds" label (same discipline as the existing paintPlayoffs). FRAMING (Nick: pick one if forced):
+chips on the existing weekly matchup cards, ordered by importance (PIVOTAL/MEANINGFUL/LOW) — glanceable, leaguewide,
+no new screen. Grounded in real code (verified): standings() L639, D.schedule L373, paintPlayoffs L644, matchup render
+L553-572. Additive, public-Hub-safe (no private/model data), honest odds only when enumerable. Freeze good-hub-pre-
+stakes. Spec _scratch/WEEKLY_STAKES_SPEC.md + prompt _scratch/WEEKLY_STAKES_EDIT_PROMPT.md. Build = EDIT chat.
+
+
+## 2026-09-23 — Weekly Stakes SHIPPED — WORKS
+Per _scratch/WEEKLY_STAKES_SPEC.md. Freeze before: good-hub-pre-stakes -> 3462be1 (pushed). Additive only; commit ndjunce/noreply.
+
+**Placement (decided at build):** dedicated "🎯 Stakes" tab (spec Option 2, permitted). Reason: the existing Weekly Results block (paintInsights) is multi-week via wtabs and must stay that way; Stakes is current-week-ONLY + importance-sorted + has its own Seeding/Odds/Both filter, so a separate current-week-scoped pane avoids overloading the existing block. Same .mu-style matchup cards so it still reads as chips on matchup cards.
+
+**Built (all additive, verified vs read code):** new tab data-tab="stakes" + pane #pane-stakes; one line in the .tab click handler; paintStakes() added to the load() paint call (was paintInsights/paintPlayoffs/paintTradeBlock). New pure fns over the existing DATA object: seedMapFrom, recordsSnapshot, seedMapIfWin, remainingMatchups, currentWeekMatchups, oddsSwing (full 2^k enumeration, ODDS_ENUM_CAP=18), boundsFor (win-out/lose-out), importanceBand, plus paintStakes render + filter wiring. New CSS (.stk-*). Does NOT touch the ESPN proxy, standings(D), weekGames(D), schedule/roster parsing, paintInsights Weekly Results, paintPlayoffs, or paintTradeBlock.
+
+**Two metrics (filter Seeding · Playoff odds · Both):** (1) SEEDING/RECORD DELTA — reuse the standings sort on a records snapshot with the one game flipped (+1W winner / +1L loser, PF held at today's value — honest v1); chip shows "Win → 5-2, seed 4 (in) · Lose → 4-3, seed 7 (out)". (2) PLAYOFF-ODDS SWING — when remaining games EXCEPT the target ≤ 18, enumerate ALL 2^k worlds and count the fraction each team lands top-playoffTeams (seed by wins then existing PF) → real %; when the tree is bigger (early season), FALL BACK to win-out/lose-out seed BOUNDS labeled "Too early for exact playoff odds … honest best/worst-case seed bounds instead of a fabricated %." Never a fake precise number. Cards ordered by importance (🔥 PIVOTAL / MEANINGFUL / ➖ low) with PIVOTAL when a team crosses the playoff cut line or the swing is large.
+
+**Verified (node harness vs synthetic + hand math):** JS parses clean (new Function). 8-team synthetic (wk4 of 6, top4): base seeds correct; T4-vs-T5 flip — T4 win→seed2, T5 win→T4 seed4/T5 seed5 — matches standings(D) flipped BY HAND (my first hand-note was wrong; code is right). Odds enumerable at 11 others: T4 win 93.8%/lose 56.3% (swing 37.5), T5 win 43.8%/lose 6.3% — big odds swing even though the single-game SEED delta is small, which is exactly why both metrics exist. Lopsided T1-vs-T8: T1 ~100%/99.2% (near-locked). Big 20-team/70-game league → oddsSwing.ok=false → bounds fallback renders "Too early" + Best/Worst seed, NO % chip. Per-mode chip check: seeding=seed chips only, odds=% chips only, both=both. Filter segs render one "on". Avatars wire to the live MEMBER map. Existing tabs untouched. Chips use flex-wrap + name ellipsis for @390px no-overflow.

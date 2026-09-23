@@ -117,6 +117,35 @@
   .pill.alive{color:var(--gold);border-color:var(--gold);background:rgba(255,207,63,.10)}
   .pline{color:var(--mut);font-size:12px;margin-top:3px;line-height:1.5}
 
+  /* ---- Weekly Stakes ---- */
+  /* segmented filter (Seeding · Playoff odds · Both) */
+  .stk-filter{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 14px}
+  .stk-seg{padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);
+           color:var(--mut);font-weight:700;font-size:12.5px;cursor:pointer;user-select:none}
+  .stk-seg.on{color:var(--txt);border-color:var(--accent);background:rgba(139,92,246,.16)}
+  /* a stakes matchup card = the .mu row + a stakes body under it */
+  .stk-card{border:1px solid var(--line);border-radius:12px;background:var(--panel2);padding:11px 12px;margin-bottom:11px}
+  .stk-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+  .stk-imp{font-size:10.5px;font-weight:800;padding:2px 9px;border-radius:7px;border:1px solid;white-space:nowrap;letter-spacing:.02em}
+  .stk-imp.pivotal{color:#ff8c3b;border-color:#ff8c3b;background:rgba(255,140,59,.12)}
+  .stk-imp.meaningful{color:var(--gold);border-color:var(--gold);background:rgba(255,207,63,.10)}
+  .stk-imp.low{color:var(--mut);border-color:var(--line);background:var(--panel)}
+  .stk-mu{display:flex;align-items:center;gap:8px;font-weight:800;font-size:14px;flex:1 1 auto;min-width:0}
+  .stk-mu .vs{color:var(--mut);font-weight:700;font-size:12px}
+  .stk-mu .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  /* per-team win/lose outcome rows */
+  .stk-team{border-top:1px solid var(--line);padding:8px 0 4px}
+  .stk-team:first-of-type{border-top:none}
+  .stk-tname{font-weight:800;font-size:13px;margin-bottom:4px;display:flex;align-items:center;gap:7px}
+  .stk-out{display:flex;gap:8px;flex-wrap:wrap}
+  .stk-chip{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:8px;border:1px solid var(--line);
+            background:var(--panel);color:var(--mut);white-space:nowrap}
+  .stk-chip b{font-weight:800}
+  .stk-chip.win{border-color:var(--grn);color:var(--grn);background:rgba(51,224,138,.10)}
+  .stk-chip.lose{border-color:var(--red);color:var(--red);background:rgba(255,96,96,.10)}
+  .stk-chip .arr{opacity:.7;font-weight:800;margin:0 2px}
+  .stk-note{color:var(--mut);font-size:11.5px;margin-top:6px;line-height:1.5}
+
   /* member avatars */
   .mav{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;border-radius:50%;
        overflow:hidden;background:var(--panel2);border:1px solid var(--line);vertical-align:middle}
@@ -178,6 +207,7 @@
 
   <div class="tabs">
     <div class="tab active" data-tab="insights">📊 League Insights</div>
+    <div class="tab" data-tab="stakes">🎯 Stakes</div>
     <div class="tab" data-tab="playoffs">🏆 Playoff Picture</div>
     <div class="tab" data-tab="block">🔁 Trade Block</div>
   </div>
@@ -190,6 +220,7 @@
 
   <div id="errbox"></div>
   <div id="pane-insights"><div class="loading">Loading…</div></div>
+  <div id="pane-stakes" class="hide"><div class="loading">Loading…</div></div>
   <div id="pane-playoffs" class="hide"><div class="loading">Loading…</div></div>
   <div id="pane-block" class="hide"><div class="loading">Loading…</div></div>
 
@@ -641,6 +672,251 @@ function standings(D){
     .map((t,i)=>({ seed:i+1, id:t.id, name:t.disp, w:t.record.w, l:t.record.l, t:t.record.t, pf:t.pf }));
 }
 
+/* ============================ WEEKLY STAKES ============================ */
+// PUBLIC + honest: for the CURRENT week's matchups (leaguewide), the win-vs-lose swing.
+// Two metrics, filterable: (1) SEEDING/RECORD DELTA — reuse standings(D) with one game flipped;
+// (2) PLAYOFF-ODDS SWING — enumerate remaining outcomes when the tree is small enough, else
+// honest win-out/lose-out BOUNDS (never a fabricated %). Nothing here re-fetches or re-derives
+// standings/schedule; it's a pure read over the existing DATA object.
+
+let STAKES_MODE = "both"; // "seeding" | "odds" | "both"
+
+// Base seed lookup {id -> seed} from a records array [{id,w,l,t,pf}] using the SAME sort as standings().
+function seedMapFrom(recs){
+  const sorted = recs.slice().sort((a,b)=> (b.w-a.w) || (b.pf-a.pf));
+  const m = {}; sorted.forEach((r,i)=> m[r.id]=i+1); return m;
+}
+// Snapshot of current records (what standings() sorts on), as a plain mutable array.
+function recordsSnapshot(D){
+  return D.teams.map(t=>({ id:t.id, w:t.record.w, l:t.record.l, t:t.record.t, pf:t.pf }));
+}
+// Seed map if `winnerId` beats `loserId` in ONE otherwise-unplayed game: +1 W winner, +1 L loser, PF unchanged.
+function seedMapIfWin(D, winnerId, loserId){
+  const recs = recordsSnapshot(D);
+  recs.forEach(r=>{ if(r.id===winnerId) r.w++; else if(r.id===loserId) r.l++; });
+  return seedMapFrom(recs);
+}
+
+// Remaining (unplayed) matchups leaguewide: games in weeks >= current week that have no result yet.
+// Each = {period, aId, bId}. Used both to size the odds tree and to enumerate it.
+function remainingMatchups(D){
+  const out = [];
+  D.games.forEach(g=>{
+    const played = (g.winner==="HOME"||g.winner==="AWAY") || (g.homePts||g.awayPts)>0 || g.period < D.week;
+    if(!played && g.period<=D.regWeeks) out.push({ period:g.period, aId:g.homeId, bId:g.awayId });
+  });
+  return out;
+}
+
+// current-week matchups (the ones we show), from weekGames — leaguewide, both scored & unscored.
+function currentWeekMatchups(D){
+  return weekGames(D, D.week).map(g=>({ period:D.week, aId:g.homeId, bId:g.awayId }));
+}
+
+const ODDS_ENUM_CAP = 18; // 2^18 = 262144 combos — feasible; above this we fall back to honest bounds.
+
+// Playoff-odds swing for one matchup (aId vs bId) using FULL enumeration of ALL remaining games.
+// Returns { ok:true, a:{win,lose}, b:{win,lose} } as make-playoffs probabilities (0..1), or {ok:false}
+// when the remaining tree is too large (caller falls back to bounds). Enumerate by flipping the target
+// game to each side first, then brute-forcing every OTHER remaining game's winner.
+function oddsSwing(D, aId, bId){
+  const rem = remainingMatchups(D);
+  // "others" = every remaining game except the one we're evaluating (match by the unordered team pair + week)
+  const isTarget = m => m.period===D.week &&
+    ((m.aId===aId&&m.bId===bId)||(m.aId===bId&&m.bId===aId));
+  const others = rem.filter(m=>!isTarget(m));
+  if(others.length > ODDS_ENUM_CAP) return { ok:false };
+  const cutoff = D.playoffTeams;
+  const baseW = {}; D.teams.forEach(t=> baseW[t.id]=t.record.w);
+  const basePF = {}; D.teams.forEach(t=> basePF[t.id]=t.pf);
+  const combos = 1 << others.length;
+
+  // fraction of enumerated worlds (over `others`) where teamId lands in the top-`cutoff` seeds,
+  // GIVEN the target game already decided (targetWinner beats targetLoser).
+  function makeFrac(teamId, targetWinner, targetLoser){
+    let made = 0;
+    for(let mask=0; mask<combos; mask++){
+      const w = Object.assign({}, baseW);
+      w[targetWinner]++; // target game locked
+      for(let i=0;i<others.length;i++){
+        const g = others[i];
+        if(mask & (1<<i)) w[g.aId]++; else w[g.bId]++;
+      }
+      // seed by wins then existing PF (same tiebreak as standings; PF held at today's value — honest v1)
+      const order = D.teams.map(t=>t.id).sort((x,y)=> (w[y]-w[x]) || (basePF[y]-basePF[x]));
+      if(order.indexOf(teamId) < cutoff) made++;
+    }
+    return made / combos;
+  }
+  return {
+    ok:true,
+    a:{ win: makeFrac(aId, aId, bId), lose: makeFrac(aId, bId, aId) },
+    b:{ win: makeFrac(bId, bId, aId), lose: makeFrac(bId, aId, bId) },
+  };
+}
+
+// Honest bounds fallback (mirrors paintPlayoffs): for a team, best case = win out, worst = lose out.
+// We report the seed range [bestSeed..worstSeed] and whether the cut line (playoffTeams) is inside it.
+function boundsFor(D, teamId){
+  const played = Math.max(0, D.week-1);
+  const gamesLeft = Math.max(0, D.regWeeks - played);
+  const recs = recordsSnapshot(D);
+  const me = recs.find(r=>r.id===teamId);
+  // best: I win all remaining, everyone else loses all remaining
+  const best = recs.map(r=>({ id:r.id, w: r.w + (r.id===teamId?gamesLeft:0), pf:r.pf }));
+  const bestSeed = seedMapFrom(best)[teamId];
+  // worst: I lose all remaining, everyone else wins all remaining
+  const worst = recs.map(r=>({ id:r.id, w: r.w + (r.id===teamId?0:gamesLeft), pf:r.pf }));
+  const worstSeed = seedMapFrom(worst)[teamId];
+  return { bestSeed, worstSeed, gamesLeft };
+}
+
+// classify importance band from a numeric swing score (0..1-ish) and whether the cut line is crossed.
+function importanceBand(score, crossesLine){
+  if(crossesLine || score >= 0.20) return { key:"pivotal", label:"🔥 PIVOTAL" };
+  if(score >= 0.05) return { key:"meaningful", label:"MEANINGFUL" };
+  return { key:"low", label:"➖ low stakes" };
+}
+
+function paintStakes(){
+  const D = DATA; const el = document.getElementById("pane-stakes");
+  if(!D){ el.innerHTML = `<div class="note">No data.</div>`; return; }
+  const dispOf = id => D.byId[id]?.disp || "—";
+  const shortOf = id => D.byId[id]?.short || "—";
+  const cutoff = D.playoffTeams;
+
+  const baseSeed = seedMapFrom(recordsSnapshot(D)); // current seeds
+  const recById = {}; D.teams.forEach(t=> recById[t.id]=t.record);
+
+  // is the odds tree enumerable right now? (drives whether "odds" mode shows % or honest bounds)
+  const remOthersCount = Math.max(0, remainingMatchups(D).length - 1);
+  const oddsEnumerable = remOthersCount <= ODDS_ENUM_CAP;
+
+  const mus = currentWeekMatchups(D);
+
+  // build a computed record per matchup, then sort by importance
+  const rows = mus.map(m=>{
+    const { aId, bId } = m;
+    // SEEDING deltas
+    const seedIfA = seedMapIfWin(D, aId, bId);   // A wins
+    const seedIfB = seedMapIfWin(D, bId, aId);   // B wins
+    const aWinSeed = seedIfA[aId], aLoseSeed = seedIfB[aId];
+    const bWinSeed = seedIfB[bId], bLoseSeed = seedIfA[bId];
+    const seedSwing = Math.abs(aWinSeed-aLoseSeed) + Math.abs(bWinSeed-bLoseSeed);
+    // crosses the playoff cut line for either team? (in when seed<=cutoff)
+    const aCross = (aWinSeed<=cutoff) !== (aLoseSeed<=cutoff);
+    const bCross = (bWinSeed<=cutoff) !== (bLoseSeed<=cutoff);
+    const crossesLine = aCross || bCross;
+
+    // ODDS swing (if enumerable)
+    let odds = null;
+    if(oddsEnumerable){
+      const o = oddsSwing(D, aId, bId);
+      if(o.ok){
+        odds = {
+          aSwing: Math.abs(o.a.win - o.a.lose),
+          bSwing: Math.abs(o.b.win - o.b.lose),
+          a:o.a, b:o.b,
+        };
+      }
+    }
+
+    // importance score depends on active mode
+    let score, crosses = crossesLine;
+    if(STAKES_MODE==="odds"){
+      score = odds ? Math.max(odds.aSwing, odds.bSwing) : (seedSwing/ D.size); // fallback proxy
+    } else if(STAKES_MODE==="seeding"){
+      score = seedSwing / Math.max(1, D.size);
+    } else { // both
+      const oddsPart = odds ? Math.max(odds.aSwing, odds.bSwing) : 0;
+      score = Math.max(oddsPart, seedSwing/Math.max(1,D.size));
+    }
+    return { aId, bId, aWinSeed, aLoseSeed, bWinSeed, bLoseSeed, seedSwing, crosses, odds,
+             aRec:recById[aId], bRec:recById[bId], score };
+  });
+
+  rows.sort((x,y)=> y.score - x.score);
+
+  const s = [];
+  // header + honest scope note
+  s.push(`<div class="card"><h2>Weekly Stakes — Week ${D.week}</h2>
+    <div class="cap">How much each of this week's games MATTERS — the swing between winning and losing, leaguewide.
+    Top <b>${cutoff}</b> of ${D.size} make the playoffs. Games are ordered by importance (most pivotal first).</div>`);
+
+  // filter control
+  s.push(`<div class="stk-filter" id="stkFilter">
+      <span class="stk-seg ${STAKES_MODE==='seeding'?'on':''}" data-mode="seeding">Seeding</span>
+      <span class="stk-seg ${STAKES_MODE==='odds'?'on':''}" data-mode="odds">Playoff odds</span>
+      <span class="stk-seg ${STAKES_MODE==='both'?'on':''}" data-mode="both">Both</span>
+    </div>`);
+
+  if((STAKES_MODE==="odds"||STAKES_MODE==="both") && !oddsEnumerable){
+    s.push(`<div class="cap" style="margin-top:-6px">Too early for exact playoff odds (${remOthersCount+1} games still to play) — the odds view shows honest best/worst-case seed bounds instead of a fabricated %. Exact odds appear automatically once few enough games remain.</div>`);
+  }
+  s.push(`</div>`);
+
+  if(!rows.length){
+    s.push(`<div class="card"><div class="cap">No matchups scheduled for Week ${D.week}.</div></div>`);
+    el.innerHTML = s.join(""); return;
+  }
+
+  const pct = x => (Math.round(x*1000)/10).toFixed(1)+"%";
+  const seedTxt = (seed) => seed<=cutoff ? `seed ${seed} <b>(in)</b>` : `seed ${seed} (out)`;
+
+  // render each matchup card
+  rows.forEach(r=>{
+    const band = importanceBand(r.score, r.crosses);
+    const aName = shortOf(r.aId), bName = shortOf(r.bId);
+    const parts = [];
+    parts.push(`<div class="stk-card">
+      <div class="stk-head">
+        <span class="stk-imp ${band.key}">${band.label}</span>
+        <span class="stk-mu"><span class="nm">${esc(aName)}</span><span class="vs">vs</span><span class="nm">${esc(bName)}</span></span>
+      </div>`);
+
+    // per-team outcome rows
+    [[r.aId, aName, r.aWinSeed, r.aLoseSeed, r.aRec, r.odds?r.odds.a:null],
+     [r.bId, bName, r.bWinSeed, r.bLoseSeed, r.bRec, r.odds?r.odds.b:null]].forEach(([id,nm,winSeed,loseSeed,rec,od])=>{
+      const winRec = `${rec.w+1}-${rec.l}${rec.t?"-"+rec.t:""}`;
+      const loseRec = `${rec.w}-${rec.l+1}${rec.t?"-"+rec.t:""}`;
+      const chips = [];
+      if(STAKES_MODE==="seeding" || STAKES_MODE==="both"){
+        chips.push(`<span class="stk-chip win">Win <span class="arr">→</span> <b>${winRec}</b>, ${seedTxt(winSeed)}</span>`);
+        chips.push(`<span class="stk-chip lose">Lose <span class="arr">→</span> <b>${loseRec}</b>, ${seedTxt(loseSeed)}</span>`);
+      }
+      if(STAKES_MODE==="odds" || STAKES_MODE==="both"){
+        if(od){ // exact enumerated odds
+          chips.push(`<span class="stk-chip win">Win <span class="arr">→</span> <b>${pct(od.win)}</b> playoffs</span>`);
+          chips.push(`<span class="stk-chip lose">Lose <span class="arr">→</span> <b>${pct(od.lose)}</b> playoffs</span>`);
+        } else if(STAKES_MODE==="odds"){ // odds-only + not enumerable → honest bounds
+          const b = boundsFor(D, id);
+          chips.push(`<span class="stk-chip">Best case: <b>seed ${b.bestSeed}</b> (win out)</span>`);
+          chips.push(`<span class="stk-chip">Worst case: <b>seed ${b.worstSeed}</b> (lose out)</span>`);
+        }
+      }
+      parts.push(`<div class="stk-team">
+        <div class="stk-tname">${avatarHtml(id, nm, 20)}${esc(nm)}</div>
+        <div class="stk-out">${chips.join("")}</div>
+      </div>`);
+    });
+
+    // per-card note
+    if(r.crosses){
+      parts.push(`<div class="stk-note">This game can move a team across the playoff cut line — it's a swing game.</div>`);
+    }
+    parts.push(`</div>`);
+    s.push(parts.join(""));
+  });
+
+  el.innerHTML = s.join("");
+
+  // wire the filter
+  const f = document.getElementById("stkFilter");
+  if(f) f.querySelectorAll(".stk-seg").forEach(seg=> seg.addEventListener("click", ()=>{
+    STAKES_MODE = seg.dataset.mode; paintStakes();
+  }));
+}
+
 function paintPlayoffs(){
   const D = DATA; const el = document.getElementById("pane-playoffs");
   if(!D){ el.innerHTML = `<div class="note">No data.</div>`; return; }
@@ -790,7 +1066,7 @@ async function load(){
     }
     DATA = res;
     document.getElementById("sub").textContent = `${DATA.size} teams · ${DATA.season||LEAGUE.season} · Week ${DATA.week}`;
-    paintInsights(); paintPlayoffs(); paintTradeBlock();
+    paintInsights(); paintStakes(); paintPlayoffs(); paintTradeBlock();
     const hhmm = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
     status.textContent = `Updated ${hhmm}`;
     document.getElementById("foot").innerHTML =
@@ -805,6 +1081,7 @@ document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click", ()=>{
   ACTIVE = t.dataset.tab;
   document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active", x===t));
   document.getElementById("pane-insights").classList.toggle("hide", ACTIVE!=="insights");
+  document.getElementById("pane-stakes").classList.toggle("hide", ACTIVE!=="stakes");
   document.getElementById("pane-playoffs").classList.toggle("hide", ACTIVE!=="playoffs");
   document.getElementById("pane-block").classList.toggle("hide", ACTIVE!=="block");
   window.scrollTo({top:0,behavior:"smooth"});

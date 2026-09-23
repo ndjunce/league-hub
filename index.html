@@ -117,6 +117,27 @@
   .pill.alive{color:var(--gold);border-color:var(--gold);background:rgba(255,207,63,.10)}
   .pline{color:var(--mut);font-size:12px;margin-top:3px;line-height:1.5}
 
+  /* ---- Playoff Races ---- */
+  .race-list{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+  .race-row{display:flex;align-items:center;gap:9px;padding:9px 4px;border-top:1px solid var(--line);flex-wrap:wrap}
+  .race-row:first-child{border-top:none}
+  .race-team{display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 auto}
+  .race-seed{color:var(--mut);font-weight:800;width:16px;text-align:center;flex:0 0 auto;font-variant-numeric:tabular-nums}
+  .race-nm{font-weight:800;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .race-rec{color:var(--mut);font-size:11.5px;font-weight:600;flex:0 0 auto}
+  .race-tag{flex:0 0 auto}
+  .race-pill{display:inline-block;font-size:10px;font-weight:800;padding:2px 8px;border-radius:7px;border:1px solid;white-space:nowrap}
+  .race-pill.clinch{color:var(--grn);border-color:var(--grn);background:rgba(51,224,138,.12)}
+  .race-pill.elim{color:var(--red);border-color:var(--red);background:rgba(255,96,96,.12)}
+  .race-pill.alive{color:var(--gold);border-color:var(--gold);background:rgba(255,207,63,.10)}
+  .race-pill.lead{color:var(--accent);border-color:var(--accent);background:rgba(139,92,246,.14)}
+  .race-pill.chase{color:var(--mut);border-color:var(--line);background:var(--panel2)}
+  .race-need{color:var(--mut);font-size:11.5px;font-weight:600;flex:1 1 100%;padding-left:31px}
+  @media(min-width:520px){.race-need{flex:1 1 auto;padding-left:0;text-align:right}}
+  .race-extra{color:var(--txt);font-weight:700}
+  .race-cut{color:var(--red);font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+            text-align:center;padding:6px 0 3px;border-top:1px dashed var(--red);margin-top:2px;opacity:.85}
+
   /* ---- Weekly Stakes ---- */
   /* segmented filter (Seeding · Playoff odds · Both) */
   .stk-filter{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 14px}
@@ -680,6 +701,7 @@ function standings(D){
 // standings/schedule; it's a pure read over the existing DATA object.
 
 let STAKES_MODE = "both"; // "seeding" | "odds" | "both"
+let STAKES_WEEK = null;   // selected week for the Stakes view; null -> defaults to D.week
 
 // Base seed lookup {id -> seed} from a records array [{id,w,l,t,pf}] using the SAME sort as standings().
 function seedMapFrom(recs){
@@ -711,6 +733,12 @@ function remainingMatchups(D){
 // current-week matchups (the ones we show), from weekGames — leaguewide, both scored & unscored.
 function currentWeekMatchups(D){
   return weekGames(D, D.week).map(g=>({ period:D.week, aId:g.homeId, bId:g.awayId }));
+}
+// matchups for ANY week (used by the Stakes week tabs); carries the resolved result for past weeks.
+function weekMatchups(D, wk){
+  return weekGames(D, wk).map(g=>({ period:wk, aId:g.homeId, bId:g.awayId,
+    winId:g.winId, loseId:g.loseId, tie:g.tie, homePts:g.homePts, awayPts:g.awayPts,
+    scored:(g.homePts||g.awayPts)>0 }));
 }
 
 const ODDS_ENUM_CAP = 18; // 2^18 = 262144 combos — feasible; above this we fall back to honest bounds.
@@ -788,16 +816,25 @@ function paintStakes(){
   const baseSeed = seedMapFrom(recordsSnapshot(D)); // current seeds
   const recById = {}; D.teams.forEach(t=> recById[t.id]=t.record);
 
-  // is the odds tree enumerable right now? (drives whether "odds" mode shows % or honest bounds)
-  const remOthersCount = Math.max(0, remainingMatchups(D).length - 1);
-  const oddsEnumerable = remOthersCount <= ODDS_ENUM_CAP;
+  // selected week (default current). Week tabs let you look ahead/back.
+  const allWeeks = []; for(let w=1; w<=D.regWeeks; w++) allWeeks.push(w);
+  if(STAKES_WEEK==null || !allWeeks.includes(STAKES_WEEK)) STAKES_WEEK = D.week;
+  const wk = STAKES_WEEK;
+  const isCurrent = wk === D.week;
+  const isFuture  = wk >  D.week;
+  const isPast    = wk <  D.week;
 
-  const mus = currentWeekMatchups(D);
+  // is the odds tree enumerable right now? (drives whether "odds" mode shows % or honest bounds)
+  // ONLY meaningful for the current week — oddsSwing targets the current week's game.
+  const remOthersCount = Math.max(0, remainingMatchups(D).length - 1);
+  const oddsEnumerable = isCurrent && remOthersCount <= ODDS_ENUM_CAP;
+
+  const mus = weekMatchups(D, wk);
 
   // build a computed record per matchup, then sort by importance
   const rows = mus.map(m=>{
     const { aId, bId } = m;
-    // SEEDING deltas
+    // SEEDING deltas — directional + honest for ANY week (records flipped by one game).
     const seedIfA = seedMapIfWin(D, aId, bId);   // A wins
     const seedIfB = seedMapIfWin(D, bId, aId);   // B wins
     const aWinSeed = seedIfA[aId], aLoseSeed = seedIfB[aId];
@@ -808,16 +845,13 @@ function paintStakes(){
     const bCross = (bWinSeed<=cutoff) !== (bLoseSeed<=cutoff);
     const crossesLine = aCross || bCross;
 
-    // ODDS swing (if enumerable)
+    // ODDS swing — EXACT only for the current week when the tree is enumerable. Future/past weeks never
+    // fabricate an exact %; future weeks show a directional/bounds estimate, past weeks show the known result.
     let odds = null;
     if(oddsEnumerable){
       const o = oddsSwing(D, aId, bId);
       if(o.ok){
-        odds = {
-          aSwing: Math.abs(o.a.win - o.a.lose),
-          bSwing: Math.abs(o.b.win - o.b.lose),
-          a:o.a, b:o.b,
-        };
+        odds = { aSwing: Math.abs(o.a.win - o.a.lose), bSwing: Math.abs(o.b.win - o.b.lose), a:o.a, b:o.b };
       }
     }
 
@@ -832,16 +866,21 @@ function paintStakes(){
       score = Math.max(oddsPart, seedSwing/Math.max(1,D.size));
     }
     return { aId, bId, aWinSeed, aLoseSeed, bWinSeed, bLoseSeed, seedSwing, crosses, odds,
-             aRec:recById[aId], bRec:recById[bId], score };
+             aRec:recById[aId], bRec:recById[bId], score,
+             winId:m.winId, loseId:m.loseId, tie:m.tie, scored:m.scored, homePts:m.homePts, awayPts:m.awayPts };
   });
 
   rows.sort((x,y)=> y.score - x.score);
 
   const s = [];
-  // header + honest scope note
-  s.push(`<div class="card"><h2>Weekly Stakes — Week ${D.week}</h2>
-    <div class="cap">How much each of this week's games MATTERS — the swing between winning and losing, leaguewide.
+  // header
+  s.push(`<div class="card"><h2>Weekly Stakes — Week ${wk}${isCurrent?" (current)":isFuture?" (upcoming)":" (past)"}</h2>
+    <div class="cap">How much each game MATTERS — the swing between winning and losing, leaguewide.
     Top <b>${cutoff}</b> of ${D.size} make the playoffs. Games are ordered by importance (most pivotal first).</div>`);
+
+  // week tabs (1..regWeeks), current week marked
+  s.push(`<div class="wtabs" id="stkWtabs">` + allWeeks.map(w =>
+    `<span class="wtab ${w===wk?'on':''}${w===D.week?' cur':''}" data-wk="${w}">Wk ${w}</span>`).join("") + `</div>`);
 
   // filter control
   s.push(`<div class="stk-filter" id="stkFilter">
@@ -850,14 +889,25 @@ function paintStakes(){
       <span class="stk-seg ${STAKES_MODE==='both'?'on':''}" data-mode="both">Both</span>
     </div>`);
 
-  if((STAKES_MODE==="odds"||STAKES_MODE==="both") && !oddsEnumerable){
+  // honest precision label per week distance
+  if(isFuture){
+    s.push(`<div class="cap" style="margin-top:-6px">Week ${wk} hasn't been played — this is a <b>projected</b> look at how pivotal each game is (seed-swing direction from today's records). It gets exact as the week approaches. No fabricated odds %.</div>`);
+  } else if(isPast){
+    s.push(`<div class="cap" style="margin-top:-6px">Week ${wk} is in the books — showing the actual results and, in hindsight, how much each game moved the picture. Known, not projected.</div>`);
+  } else if((STAKES_MODE==="odds"||STAKES_MODE==="both") && !oddsEnumerable){
     s.push(`<div class="cap" style="margin-top:-6px">Too early for exact playoff odds (${remOthersCount+1} games still to play) — the odds view shows honest best/worst-case seed bounds instead of a fabricated %. Exact odds appear automatically once few enough games remain.</div>`);
   }
-  s.push(`</div>`);
+
+  const wireTabs = () => {
+    const wt = document.getElementById("stkWtabs");
+    if(wt) wt.querySelectorAll(".wtab").forEach(t=> t.addEventListener("click", ()=>{
+      STAKES_WEEK = Number(t.dataset.wk); paintStakes();
+    }));
+  };
 
   if(!rows.length){
-    s.push(`<div class="card"><div class="cap">No matchups scheduled for Week ${D.week}.</div></div>`);
-    el.innerHTML = s.join(""); return;
+    s.push(`<div class="card"><div class="cap">No matchups scheduled for Week ${wk}.</div></div>`);
+    el.innerHTML = s.join(""); wireTabs(); return;
   }
 
   const pct = x => (Math.round(x*1000)/10).toFixed(1)+"%";
@@ -868,13 +918,34 @@ function paintStakes(){
     const band = importanceBand(r.score, r.crosses);
     const aName = shortOf(r.aId), bName = shortOf(r.bId);
     const parts = [];
+    // past week with a known result: show a small result badge instead of leading with an importance tag.
+    const resultBadge = (isPast && r.scored)
+      ? (r.tie ? `<span class="stk-imp low">TIE ${pts(r.homePts)}–${pts(r.awayPts)}</span>`
+               : `<span class="stk-imp meaningful">${esc(shortOf(r.winId))} won</span>`)
+      : `<span class="stk-imp ${band.key}">${band.label}</span>`;
     parts.push(`<div class="stk-card">
       <div class="stk-head">
-        <span class="stk-imp ${band.key}">${band.label}</span>
+        ${resultBadge}
         <span class="stk-mu"><span class="nm">${esc(aName)}</span><span class="vs">vs</span><span class="nm">${esc(bName)}</span></span>
       </div>`);
 
-    // per-team outcome rows
+    if(isPast && r.scored){
+      // KNOWN result — retrospective. Who won, and whether it was a cut-line swing in hindsight.
+      const won = r.tie ? null : shortOf(r.winId);
+      parts.push(`<div class="stk-team"><div class="stk-out">`
+        + (r.tie
+            ? `<span class="stk-chip">Ended in a tie, ${pts(r.homePts)}–${pts(r.awayPts)}.</span>`
+            : `<span class="stk-chip win"><b>${esc(won)}</b> won, ${pts(Math.max(r.homePts,r.awayPts))}–${pts(Math.min(r.homePts,r.awayPts))}</span>`)
+        + `</div></div>`);
+      if(r.crosses){
+        parts.push(`<div class="stk-note">In hindsight this was a cut-line swing game — the result moved a team across the playoff line.</div>`);
+      }
+      parts.push(`</div>`);
+      s.push(parts.join(""));
+      return;
+    }
+
+    // per-team outcome rows (current or future — hypothetical win/lose)
     [[r.aId, aName, r.aWinSeed, r.aLoseSeed, r.aRec, r.odds?r.odds.a:null],
      [r.bId, bName, r.bWinSeed, r.bLoseSeed, r.bRec, r.odds?r.odds.b:null]].forEach(([id,nm,winSeed,loseSeed,rec,od])=>{
       const winRec = `${rec.w+1}-${rec.l}${rec.t?"-"+rec.t:""}`;
@@ -885,10 +956,10 @@ function paintStakes(){
         chips.push(`<span class="stk-chip lose">Lose <span class="arr">→</span> <b>${loseRec}</b>, ${seedTxt(loseSeed)}</span>`);
       }
       if(STAKES_MODE==="odds" || STAKES_MODE==="both"){
-        if(od){ // exact enumerated odds
+        if(od){ // exact enumerated odds (current week only)
           chips.push(`<span class="stk-chip win">Win <span class="arr">→</span> <b>${pct(od.win)}</b> playoffs</span>`);
           chips.push(`<span class="stk-chip lose">Lose <span class="arr">→</span> <b>${pct(od.lose)}</b> playoffs</span>`);
-        } else if(STAKES_MODE==="odds"){ // odds-only + not enumerable → honest bounds
+        } else if(STAKES_MODE==="odds"){ // odds-only + not enumerable (or future week) → honest bounds
           const b = boundsFor(D, id);
           chips.push(`<span class="stk-chip">Best case: <b>seed ${b.bestSeed}</b> (win out)</span>`);
           chips.push(`<span class="stk-chip">Worst case: <b>seed ${b.worstSeed}</b> (lose out)</span>`);
@@ -902,7 +973,7 @@ function paintStakes(){
 
     // per-card note
     if(r.crosses){
-      parts.push(`<div class="stk-note">This game can move a team across the playoff cut line — it's a swing game.</div>`);
+      parts.push(`<div class="stk-note">${isFuture?"Projected: this game could move a team across the playoff cut line.":"This game can move a team across the playoff cut line — it's a swing game."}</div>`);
     }
     parts.push(`</div>`);
     s.push(parts.join(""));
@@ -915,6 +986,83 @@ function paintStakes(){
   if(f) f.querySelectorAll(".stk-seg").forEach(seg=> seg.addEventListener("click", ()=>{
     STAKES_MODE = seg.dataset.mode; paintStakes();
   }));
+  // wire the week tabs
+  wireTabs();
+}
+
+/* ---- Playoff Races (pure data fns over D; reuse standings/boundsFor discipline) ---- */
+
+// #1-seed / first-round-bye race. Ceiling = win out (w+gamesLeft); floor = lose out (w).
+// A team is a contender for #1 if its ceiling >= the current leader's floor (w). CLINCHED #1 when a team's
+// floor beats every OTHER team's ceiling (can't be caught for the top seed even if it loses out).
+function seedRaceData(D){
+  const st = standings(D); // seeded by W then PF
+  const played = Math.max(0, D.week-1);
+  const gamesLeft = Math.max(0, D.regWeeks - played);
+  const leader = st[0];
+  const ceil = t => t.w + gamesLeft;      // win-out wins
+  const floor = t => t.w;                 // lose-out wins (won't decrease)
+  // clinched #1: a team whose floor > every other team's ceiling
+  let clinchedId = null;
+  st.forEach(t=>{
+    const others = st.filter(o=>o.id!==t.id);
+    if(gamesLeft>=0 && others.every(o=> floor(t) > ceil(o))) clinchedId = t.id;
+  });
+  // contenders: ceiling can reach the leader's floor (i.e. mathematically still able to tie/pass the top)
+  const leaderFloor = floor(leader);
+  const contenders = st.filter(t => ceil(t) >= leaderFloor).map(t=>({
+    id:t.id, name:t.name, seed: st.indexOf(t)+1, w:t.w, l:t.l, pf:t.pf,
+    ceiling: ceil(t), floor: floor(t),
+    gamesBack: Math.max(0, leader.w - t.w),
+    isLeader: t.id===leader.id,
+    clinched: t.id===clinchedId,
+  }));
+  return { leader, gamesLeft, clinchedId, contenders, cutoff:D.playoffTeams };
+}
+
+// General playoff-spot race for the top-`playoffTeams` cutoff.
+// IN = current seed <= cutoff. BUBBLE = the cut line is reachable both directions (best-case in, worst-case out).
+// CHASING = out now but win-out ceiling can still reach the current cut team's floor (still alive).
+function spotRaceData(D){
+  const st = standings(D);
+  const cutoff = D.playoffTeams;
+  const played = Math.max(0, D.week-1);
+  const gamesLeft = Math.max(0, D.regWeeks - played);
+  const cutTeam = st[cutoff-1];        // last team currently IN
+  const firstOut = st[cutoff];         // first team currently OUT
+  const cutW = cutTeam ? cutTeam.w : 0;
+  const rows = st.map((t,i)=>{
+    const b = boundsFor(D, t.id);      // {bestSeed, worstSeed, gamesLeft}
+    const inNow = i < cutoff;
+    // reachable both ways -> BUBBLE; solidly in -> IN; below but ceiling still reaches cut floor -> CHASING; else OUT
+    const canBeIn  = b.bestSeed  <= cutoff;
+    const canBeOut = b.worstSeed >  cutoff;
+    let band;
+    if(gamesLeft===0){ band = inNow ? "in" : "out"; }
+    else if(canBeIn && canBeOut) band = "bubble";
+    else if(canBeIn && !canBeOut) band = "in";       // can't fall out even losing out => effectively clinched-ish
+    else if(!canBeIn) band = "out";                  // can't reach even winning out => eliminated
+    else band = inNow ? "in" : "chasing";
+    // games back from the cut line (0 if in). Below the line: cutW - t.w.
+    const gamesBack = inNow ? 0 : Math.max(0, cutW - t.w);
+    // magic number to GUARANTEE a spot: wins such that floor beats the best chaser's ceiling. Elim number: losses
+    // such that ceiling can't reach the cut team's floor. Computable = returns a number, else null (too early).
+    const chasers = st.slice(cutoff);          // teams currently out
+    const bestChaserCeil = chasers.length ? Math.max(...chasers.map(c=>c.w + gamesLeft)) : 0;
+    // magic: additional wins m so that (t.w + m) > bestChaserCeil, capped at gamesLeft
+    let magic = null;
+    if(inNow && gamesLeft>0){
+      for(let m=0;m<=gamesLeft;m++){ if(t.w + m > bestChaserCeil){ magic = m; break; } }
+    }
+    // elimination: additional losses x so that ceiling (w + (gamesLeft-x)) < cut team's current floor
+    let elim = null;
+    if(!inNow && gamesLeft>0){
+      for(let x=0;x<=gamesLeft;x++){ if(t.w + (gamesLeft - x) < cutW){ elim = x; break; } }
+    }
+    return { id:t.id, name:t.name, seed:i+1, w:t.w, l:t.l, t:t.t, pf:t.pf,
+             band, gamesBack, bestSeed:b.bestSeed, worstSeed:b.worstSeed, magic, elim, inNow };
+  });
+  return { rows, cutoff, cutW, gamesLeft, cutTeam, firstOut };
 }
 
 function paintPlayoffs(){
@@ -969,6 +1117,67 @@ function paintPlayoffs(){
 
   // honest "what needs to happen" note
   s.push(`<div class="card"><div class="cap">As the season goes on this will show concrete paths ("win 2 of your last 3 and you're in"). With ${gamesLeft} games left for everyone, the field is still wide open. Check back weekly.</div></div>`);
+
+  // ===== RACE 1: #1 seed / first-round bye =====
+  const shortOf = id => D.byId[id]?.short || "—";
+  const sr = seedRaceData(D);
+  s.push(`<div class="card"><h2>🥇 #1 Seed / First-Round Bye Race</h2>
+    <div class="cap">The #1 seed earns a first-round bye. Contenders are teams that can still finish first if they win out; games-back is from the current leader (${esc(shortOf(sr.leader.id))}, ${sr.leader.w}-${sr.leader.l}).</div>`);
+  if(sr.gamesLeft===0){
+    s.push(`<div class="cap">Regular season is over — ${esc(shortOf(sr.leader.id))} is the #1 seed.</div>`);
+  } else if(sr.contenders.length<=1){
+    s.push(`<div class="cap">${sr.clinchedId ? `${esc(shortOf(sr.clinchedId))} has CLINCHED the #1 seed (can't be caught even losing out).` : `Only ${esc(shortOf(sr.leader.id))} can reach the top seed right now.`}</div>`);
+  }
+  s.push(`<div class="race-list">`);
+  sr.contenders.forEach(c=>{
+    const need = c.isLeader
+      ? (c.clinched ? "Locked in — can't be caught for #1." : "Win out and the top seed is theirs.")
+      : `Needs to win out (ceiling ${c.ceiling}) + ${esc(shortOf(sr.leader.id))} to slip.`;
+    const tag = c.clinched ? `<span class="race-pill clinch">CLINCHED #1</span>`
+              : c.isLeader ? `<span class="race-pill lead">LEADER</span>`
+              : `<span class="race-pill chase">${c.gamesBack} GB</span>`;
+    s.push(`<div class="race-row">
+      <div class="race-team">${avatarHtml(c.id, shortOf(c.id), 22)}<span class="race-nm">${esc(shortOf(c.id))}</span>
+        <span class="race-rec">${c.w}-${c.l} · ${pts(c.pf)} pf</span></div>
+      <div class="race-tag">${tag}</div>
+      <div class="race-need">${need}</div>
+    </div>`);
+  });
+  s.push(`</div></div>`);
+
+  // ===== RACE 2: general playoff-spot race =====
+  const spr = spotRaceData(D);
+  const BAND = {
+    in:      {label:"IN",      cls:"clinch"},
+    bubble:  {label:"BUBBLE",  cls:"alive"},
+    chasing: {label:"CHASING", cls:"chase"},
+    out:     {label:"OUT",     cls:"elim"},
+  };
+  s.push(`<div class="card"><h2>🎟️ Playoff-Spot Race</h2>
+    <div class="cap">Top <b>${spr.cutoff}</b> make it. <b>IN</b> = currently holding a spot · <b>BUBBLE</b> = the cut line is reachable either way · <b>CHASING</b> = below the line but still alive · <b>OUT</b> = can't get in even winning out. Games-back is from the cut line (${spr.cutTeam?`${esc(shortOf(spr.cutTeam.id))} at ${spr.cutW} W`:"—"}).</div>`);
+  if(spr.gamesLeft>=D.regWeeks-1){
+    s.push(`<div class="cap">It's early — everyone's still alive, so most teams read BUBBLE. This sharpens each week.</div>`);
+  }
+  s.push(`<div class="race-list">`);
+  spr.rows.forEach(r=>{
+    const b = BAND[r.band];
+    // cut-line divider after the last IN seed
+    if(r.seed === spr.cutoff+1){
+      s.push(`<div class="race-cut">— playoff cut line —</div>`);
+    }
+    const extra = [];
+    if(r.gamesBack>0) extra.push(`${r.gamesBack} GB`);
+    if(r.magic!=null) extra.push(`magic ${r.magic}`);
+    if(r.elim!=null) extra.push(`elim ${r.elim}`);
+    const extraTxt = extra.length ? `<span class="race-extra">${extra.join(" · ")}</span>` : "";
+    s.push(`<div class="race-row">
+      <div class="race-team"><span class="race-seed">${r.seed}</span>${avatarHtml(r.id, shortOf(r.id), 22)}<span class="race-nm">${esc(shortOf(r.id))}</span>
+        <span class="race-rec">${r.w}-${r.l}${r.t?"-"+r.t:""} · ${pts(r.pf)} pf</span></div>
+      <div class="race-tag"><span class="race-pill ${b.cls}">${b.label}</span></div>
+      <div class="race-need">seed range ${r.bestSeed}–${r.worstSeed}${extraTxt?` · ${extraTxt}`:""}</div>
+    </div>`);
+  });
+  s.push(`</div><div class="cap" style="margin-top:8px">Magic number = wins that guarantee a spot; elimination number = losses that end the chase. Both appear only once the math is certain — early on they stay blank on purpose (no fake certainty).</div></div>`);
 
   el.innerHTML = s.join("");
 }

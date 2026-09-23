@@ -991,7 +991,7 @@ function paintStakes(){
         if(od){ // exact enumerated odds (current week only)
           chips.push(`<span class="stk-chip win">Win <span class="arr">→</span> <b>${pct(od.win)}</b> playoffs</span>`);
           chips.push(`<span class="stk-chip lose">Lose <span class="arr">→</span> <b>${pct(od.lose)}</b> playoffs</span>`);
-        } else if(STAKES_MODE==="odds"){ // odds-only + not enumerable (or future week) → honest bounds
+        } else { // not enumerable (early season / future week) → honest win-out/lose-out bounds (BOTH & odds)
           const b = boundsFor(D, id);
           chips.push(`<span class="stk-chip">Best case: <b>seed ${b.bestSeed}</b> (win out)</span>`);
           chips.push(`<span class="stk-chip">Worst case: <b>seed ${b.worstSeed}</b> (lose out)</span>`);
@@ -1063,38 +1063,56 @@ function spotRaceData(D){
   const cutTeam = st[cutoff-1];        // last team currently IN
   const firstOut = st[cutoff];         // first team currently OUT
   const cutW = cutTeam ? cutTeam.w : 0;
+  const firstOutW = firstOut ? firstOut.w : cutW;
   const rows = st.map((t,i)=>{
-    const b = boundsFor(D, t.id);      // {bestSeed, worstSeed, gamesLeft}
+    const b = boundsFor(D, t.id);      // {bestSeed, worstSeed, gamesLeft} — kept for honest bounds, not the headline
     const inNow = i < cutoff;
-    // reachable both ways -> BUBBLE; solidly in -> IN; below but ceiling still reaches cut floor -> CHASING; else OUT
+    // theoretical extremes (span the whole league early season -> not the headline signal)
     const canBeIn  = b.bestSeed  <= cutoff;
     const canBeOut = b.worstSeed >  cutoff;
+    // SIGNED games from the cut line, using CURRENT record (the real, informative signal today):
+    //  in-line teams: cushion over the first team OUT (t.w - firstOutW) -> higher = safer
+    //  out-line teams: deficit to the cut team (t.w - cutW, negative) -> more negative = further back
+    const gamesFromLine = inNow ? (t.w - firstOutW) : (t.w - cutW);
+    const gamesBack = inNow ? 0 : Math.max(0, cutW - t.w);        // legacy positive GB for out teams
+    // BAND by CURRENT standing (not the still-wide clinch/elim math), unless the math is actually certain.
+    // BUBBLE is reserved for teams straddling the cut line: the two seeds just inside and just outside it,
+    // OR any team level on wins with the cut-line team. Clearly-above by seed = IN, clearly-below = CHASING —
+    // so the current ordering (W then PF) separates a 2-0 leader from an 0-2 cellar-dweller instead of
+    // flattening everyone to BUBBLE on the still-wide win-out/lose-out extremes.
+    const seed = i+1;
     let band;
     if(gamesLeft===0){ band = inNow ? "in" : "out"; }
-    else if(canBeIn && canBeOut) band = "bubble";
-    else if(canBeIn && !canBeOut) band = "in";       // can't fall out even losing out => effectively clinched-ish
-    else if(!canBeIn) band = "out";                  // can't reach even winning out => eliminated
-    else band = inNow ? "in" : "chasing";
-    // games back from the cut line (0 if in). Below the line: cutW - t.w.
-    const gamesBack = inNow ? 0 : Math.max(0, cutW - t.w);
-    // magic number to GUARANTEE a spot: wins such that floor beats the best chaser's ceiling. Elim number: losses
-    // such that ceiling can't reach the cut team's floor. Computable = returns a number, else null (too early).
-    const chasers = st.slice(cutoff);          // teams currently out
+    else if(!canBeIn) band = "out";                  // truly ELIMINATED (can't reach even winning out)
+    else if(canBeIn && !canBeOut) band = "in";       // truly CLINCHED-ish (can't fall out even losing out)
+    else {
+      // straddling = the seeds just inside/just outside the line (cutoff and the two either side)
+      const straddlesLine = seed>=cutoff-1 && seed<=cutoff+2;
+      if(straddlesLine) band = "bubble";
+      else if(inNow) band = "in";
+      else band = "chasing";
+    }
+    // magic / elimination numbers (unchanged — only surface once certain)
+    const chasers = st.slice(cutoff);
     const bestChaserCeil = chasers.length ? Math.max(...chasers.map(c=>c.w + gamesLeft)) : 0;
-    // magic: additional wins m so that (t.w + m) > bestChaserCeil, capped at gamesLeft
     let magic = null;
     if(inNow && gamesLeft>0){
       for(let m=0;m<=gamesLeft;m++){ if(t.w + m > bestChaserCeil){ magic = m; break; } }
     }
-    // elimination: additional losses x so that ceiling (w + (gamesLeft-x)) < cut team's current floor
     let elim = null;
     if(!inNow && gamesLeft>0){
       for(let x=0;x<=gamesLeft;x++){ if(t.w + (gamesLeft - x) < cutW){ elim = x; break; } }
     }
     return { id:t.id, name:t.name, seed:i+1, w:t.w, l:t.l, t:t.t, pf:t.pf,
-             band, gamesBack, bestSeed:b.bestSeed, worstSeed:b.worstSeed, magic, elim, inNow };
+             band, gamesBack, gamesFromLine, bestSeed:b.bestSeed, worstSeed:b.worstSeed,
+             magic, elim, inNow, boundsWide:(b.worstSeed - b.bestSeed) >= (D.size-1) };
   });
-  return { rows, cutoff, cutW, gamesLeft, cutTeam, firstOut };
+  // PF-tie flags: mark a row when it shares the same wins as an adjacent row (PF is what orders them)
+  rows.forEach((r,i)=>{
+    const prev = rows[i-1], next = rows[i+1];
+    r.pfTie = (prev && prev.w===r.w) || (next && next.w===r.w);
+  });
+  return { rows, cutoff, cutW, firstOutW, gamesLeft, cutTeam, firstOut };
 }
 
 function paintPlayoffs(){
@@ -1160,11 +1178,15 @@ function paintPlayoffs(){
   } else if(sr.contenders.length<=1){
     s.push(`<div class="cap">${sr.clinchedId ? `${esc(shortOf(sr.clinchedId))} has CLINCHED the #1 seed (can't be caught even losing out).` : `Only ${esc(shortOf(sr.leader.id))} can reach the top seed right now.`}</div>`);
   }
+  // flag contenders tied on games-back (same wins) so we can note PF is what separates them
+  const gbCounts = {}; sr.contenders.forEach(c=> gbCounts[c.gamesBack]=(gbCounts[c.gamesBack]||0)+1);
   s.push(`<div class="race-list">`);
   sr.contenders.forEach(c=>{
+    const tiedOnGB = gbCounts[c.gamesBack] > 1;
     const need = c.isLeader
       ? (c.clinched ? "Locked in — can't be caught for #1." : "Win out and the top seed is theirs.")
-      : `Needs to win out (ceiling ${c.ceiling}) + ${esc(shortOf(sr.leader.id))} to slip.`;
+      : `Needs to win out (ceiling ${c.ceiling}) + ${esc(shortOf(sr.leader.id))} to slip.`
+        + (tiedOnGB ? ` · ${pts(c.pf)} pf breaks the tie` : "");
     const tag = c.clinched ? `<span class="race-pill clinch">CLINCHED #1</span>`
               : c.isLeader ? `<span class="race-pill lead">LEADER</span>`
               : `<span class="race-pill chase">${c.gamesBack} GB</span>`;
@@ -1186,9 +1208,9 @@ function paintPlayoffs(){
     out:     {label:"OUT",     cls:"elim"},
   };
   s.push(`<div class="card"><h2>🎟️ Playoff-Spot Race</h2>
-    <div class="cap">Top <b>${spr.cutoff}</b> make it. <b>IN</b> = currently holding a spot · <b>BUBBLE</b> = the cut line is reachable either way · <b>CHASING</b> = below the line but still alive · <b>OUT</b> = can't get in even winning out. Games-back is from the cut line (${spr.cutTeam?`${esc(shortOf(spr.cutTeam.id))} at ${spr.cutW} W`:"—"}).</div>`);
+    <div class="cap">Top <b>${spr.cutoff}</b> make it, ordered by current standing (W, then points-for). <b>IN</b> = holding a spot with a cushion · <b>BUBBLE</b> = within a game of the cut line · <b>CHASING</b> = below the line but alive · <b>OUT</b> = can't get in even winning out. The gap shown is games from the cut line by today's record (${spr.cutTeam?`${esc(shortOf(spr.cutTeam.id))} holds the last spot at ${spr.cutW} W`:"—"}); points-for breaks ties.</div>`);
   if(spr.gamesLeft>=D.regWeeks-1){
-    s.push(`<div class="cap">It's early — everyone's still alive, so most teams read BUBBLE. This sharpens each week.</div>`);
+    s.push(`<div class="cap">It's early — the theoretical win-out/lose-out range still spans the league, so we lead with where teams actually stand today (record, gap from the line, points-for). The full bounds and magic/elimination numbers sharpen each week.</div>`);
   }
   s.push(`<div class="race-list">`);
   spr.rows.forEach(r=>{
@@ -1197,19 +1219,32 @@ function paintPlayoffs(){
     if(r.seed === spr.cutoff+1){
       s.push(`<div class="race-cut">— playoff cut line —</div>`);
     }
+    // headline signal = CURRENT gap from the cut line (+ PF tiebreak), not the non-informative wide seed range.
+    let gapTxt;
+    if(spr.gamesLeft===0){ gapTxt = r.inNow ? "made it" : "missed out"; }
+    else if(r.inNow){
+      gapTxt = r.gamesFromLine>0 ? `+${r.gamesFromLine} game${r.gamesFromLine===1?"":"s"} above the line`
+             : `level with the line`;
+    } else {
+      const gb = Math.max(0, spr.cutW - r.w);
+      gapTxt = gb>0 ? `${gb} game${gb===1?"":"s"} back` : `level with the line`;
+    }
+    // PF tiebreak note when tied on wins with a neighbor (mirrors how standings(D) actually breaks it)
+    const pfTxt = r.pfTie ? ` · ${pts(r.pf)} pf breaks the tie` : ` · ${pts(r.pf)} pf`;
+    // magic/elim only when certain; wide early-season bounds shown de-emphasized, not as the headline
     const extra = [];
-    if(r.gamesBack>0) extra.push(`${r.gamesBack} GB`);
     if(r.magic!=null) extra.push(`magic ${r.magic}`);
     if(r.elim!=null) extra.push(`elim ${r.elim}`);
-    const extraTxt = extra.length ? `<span class="race-extra">${extra.join(" · ")}</span>` : "";
+    if(!r.boundsWide) extra.push(`range seed ${r.bestSeed}–${r.worstSeed}`); // only when it actually narrows
+    const extraTxt = extra.length ? ` · <span class="race-extra">${extra.join(" · ")}</span>` : "";
     s.push(`<div class="race-row">
       <div class="race-team"><span class="race-seed">${r.seed}</span>${avatarHtml(r.id, shortOf(r.id), 22)}<span class="race-nm">${esc(shortOf(r.id))}</span>
         <span class="race-rec">${r.w}-${r.l}${r.t?"-"+r.t:""} · ${pts(r.pf)} pf</span></div>
       <div class="race-tag"><span class="race-pill ${b.cls}">${b.label}</span></div>
-      <div class="race-need">seed range ${r.bestSeed}–${r.worstSeed}${extraTxt?` · ${extraTxt}`:""}</div>
+      <div class="race-need">${gapTxt}${pfTxt}${extraTxt}</div>
     </div>`);
   });
-  s.push(`</div><div class="cap" style="margin-top:8px">Magic number = wins that guarantee a spot; elimination number = losses that end the chase. Both appear only once the math is certain — early on they stay blank on purpose (no fake certainty).</div></div>`);
+  s.push(`</div><div class="cap" style="margin-top:8px">Magic number = wins that guarantee a spot; elimination number = losses that end the chase; the seed range appears once it narrows enough to mean something. Early on those stay blank on purpose (no fake certainty) — the record, gap from the line, and points-for carry the signal.</div></div>`);
 
   el.innerHTML = s.join("");
 }

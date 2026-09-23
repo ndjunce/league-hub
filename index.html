@@ -799,8 +799,30 @@ function boundsFor(D, teamId){
   return { bestSeed, worstSeed, gamesLeft };
 }
 
+// Standings compression: the win-spread among playoff-relevant teams (those whose win-out ceiling can
+// still reach the current cut-line team's wins). When that spread is tight, a single result can reshuffle
+// seeding, so every undecided game is genuinely high-leverage and the fine-grained band split is noise.
+// Returns { spread, tight, contenderCount } — matches the Hub's "gets sharper each week" discipline.
+function standingsCompression(D){
+  const st = standings(D);
+  const played = Math.max(0, D.week-1);
+  const gamesLeft = Math.max(0, D.regWeeks - played);
+  const cutoff = D.playoffTeams;
+  const cutW = st[cutoff-1] ? st[cutoff-1].w : 0;   // wins of the team on the cut line
+  // playoff-relevant = still able to reach the cut line if they win out (ceiling >= cutW)
+  const relevant = st.filter(t => (t.w + gamesLeft) >= cutW);
+  const ws = relevant.map(t=>t.w);
+  const spread = ws.length ? (Math.max(...ws) - Math.min(...ws)) : 0;
+  // tight when the field is bunched within ~2 games (a single result can reshuffle seeding)
+  const tight = spread <= 2;
+  return { spread, tight, contenderCount: relevant.length };
+}
+
 // classify importance band from a numeric swing score (0..1-ish) and whether the cut line is crossed.
-function importanceBand(score, crossesLine){
+// `tight` (optional): when standings are compressed, every undecided game is high-leverage → force PIVOTAL
+// rather than splitting hairs on tiny odds-swing differences that are within noise this early.
+function importanceBand(score, crossesLine, tight){
+  if(tight) return { key:"pivotal", label:"🔥 PIVOTAL" };
   if(crossesLine || score >= 0.20) return { key:"pivotal", label:"🔥 PIVOTAL" };
   if(score >= 0.05) return { key:"meaningful", label:"MEANINGFUL" };
   return { key:"low", label:"➖ low stakes" };
@@ -828,6 +850,11 @@ function paintStakes(){
   // ONLY meaningful for the current week — oddsSwing targets the current week's game.
   const remOthersCount = Math.max(0, remainingMatchups(D).length - 1);
   const oddsEnumerable = isCurrent && remOthersCount <= ODDS_ENUM_CAP;
+
+  // Standings compression gate: when the playoff-relevant field is bunched, every undecided game is
+  // genuinely pivotal, so we force PIVOTAL rather than splitting tiny odds-swing hairs (noise this early).
+  const comp = standingsCompression(D);
+  const tightBands = comp.tight && !isPast;   // past weeks show results, not hypothetical bands
 
   const mus = weekMatchups(D, wk);
 
@@ -898,6 +925,11 @@ function paintStakes(){
     s.push(`<div class="cap" style="margin-top:-6px">Too early for exact playoff odds (${remOthersCount+1} games still to play) — the odds view shows honest best/worst-case seed bounds instead of a fabricated %. Exact odds appear automatically once few enough games remain.</div>`);
   }
 
+  // standings-compression framing: explain why every game reads PIVOTAL when the field is bunched
+  if(tightBands){
+    s.push(`<div class="cap" style="margin-top:-6px">Standings are tightly bunched (playoff-relevant teams within ${comp.spread} game${comp.spread===1?"":"s"}) — a single result can reshuffle the seeding, so <b>every game matters this week</b>. The PIVOTAL / MEANINGFUL / LOW split kicks in once teams separate enough for the differences to be real.</div>`);
+  }
+
   const wireTabs = () => {
     const wt = document.getElementById("stkWtabs");
     if(wt) wt.querySelectorAll(".wtab").forEach(t=> t.addEventListener("click", ()=>{
@@ -915,7 +947,7 @@ function paintStakes(){
 
   // render each matchup card
   rows.forEach(r=>{
-    const band = importanceBand(r.score, r.crosses);
+    const band = importanceBand(r.score, r.crosses, tightBands);
     const aName = shortOf(r.aId), bName = shortOf(r.bId);
     const parts = [];
     // past week with a known result: show a small result badge instead of leading with an importance tag.

@@ -20,4 +20,9 @@ Default league: **Royal Crushers** (ESPN, id 963488).
 3. Deploy. The page calls same-origin `/api/espn`.
 
 ## Local
-Open `index.html` (it falls back to the existing proxy domain for the ESPN call). No build step.
+No build step, but `file://` and `python -m http.server` can NOT load data. On `localhost` the page calls same-origin `/api/espn`,
+which only Vercel serves; on any other host it falls back to the dashboard's proxy, which is CORS-limited to `https://ndjunce.github.io`
+(and stays that way). To see live data, use a Vercel preview deploy, or run
+`npx vercel@64.0.2 dev` after `npx vercel@64.0.2 env pull`. That writes `ESPN_S2` / `ESPN_SWID` to `.env.local`, which this repo does
+NOT gitignore yet: never stage it, and delete it when you're done.
+Links are shareable: `#insights/wk6`, `#stakes/wk6/odds`, `#playoffs`, `#block`.

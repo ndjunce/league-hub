@@ -222,10 +222,19 @@ providers.espn = (function(){
   }
   function playerOf(entry, curWeek){
     const p = (entry.playerPoolEntry && entry.playerPoolEntry.player) || entry.player || {};
-    const applied = (entry.playerPoolEntry && entry.playerPoolEntry.appliedStatTotal) || 0; // season-to-date actual
+    // appliedStatTotal is the LATEST scoring period's points, NOT a season total (the default mRoster
+    // only carries one weekly line). It used to feed "season PPG" = latest week (bug fixed 2026-10-13).
+    const applied = (entry.playerPoolEntry && entry.playerPoolEntry.appliedStatTotal) || 0;
+    const stats = p.stats||[];
+    // ESPN's own season line: source 0 = actual, split 0 = season. appliedTotal = season pts,
+    // stats["210"] = games played, appliedAverage = season PPG (= appliedTotal / games).
+    const seas = stats.find(s=>s.statSourceId===0 && s.statSplitTypeId===0 && s.seasonId===Number(LEAGUE.season));
+    // ESPN's projection for the current week (source 1 = projected, split 1 = weekly). Labeled as ESPN's.
+    let projWk = 0;
+    stats.forEach(s=>{ if(s.statSourceId===1 && s.statSplitTypeId===1 && s.scoringPeriodId===curWeek) projWk += (s.appliedTotal||0); });
     // per-week actual points map for every week this player has a stat line
     const byWeek = {};
-    (p.stats||[]).forEach(s=>{ if(s.statSourceId===0 && s.statSplitTypeId===1 && s.scoringPeriodId!=null) byWeek[s.scoringPeriodId] = Math.round((s.appliedTotal||0)*10)/10; });
+    stats.forEach(s=>{ if(s.statSourceId===0 && s.statSplitTypeId===1 && s.scoringPeriodId!=null) byWeek[s.scoringPeriodId] = Math.round((s.appliedTotal||0)*10)/10; });
     return { id:String(p.id||entry.playerId||""), name:p.fullName||("id "+(entry.playerId||"?")),
              pos: POS[p.defaultPositionId]||"?", team: PRO[p.proTeamId]||"",
              eligible: (p.eligibleSlots||[]).slice(),          // raw slot ids the player can fill
@@ -233,20 +242,36 @@ providers.espn = (function(){
              slotId: entry.lineupSlotId,
              starter: SLOT[entry.lineupSlotId]!=="BN" && SLOT[entry.lineupSlotId]!=="IR",
              onIR: SLOT[entry.lineupSlotId]==="IR",
-             pts: applied,                                     // season total (positional leaders)
+             latestPts: applied,                               // latest scoring period only (NOT season)
+             seasonPts: seas ? (seas.appliedTotal||0) : 0,     // ESPN season total
+             gp: seas && seas.stats ? (seas.stats["210"]||0) : 0, // ESPN games played
+             seasonPPG: seas ? (seas.appliedAverage||0) : 0,   // ESPN season points per game
+             projWk: Math.round(projWk*10)/10,                 // ESPN projection, current week
              byWeek };                                         // {week: actualPts}
   }
   function buildTeam(t, curWeek){
     const entries = ((t.roster||{}).entries)||[];
     const players = entries.map(e=>playerOf(e, curWeek));
     const tn = teamName(t);
+    const starters = players.filter(p=>p.starter);           // starter = lineupSlotId not BN(20) / IR(21)
+    const sim = t.currentSimulationResults;
     return {
       id: t.id, name: tn, disp: memberName(t.id, tn), short: memberShort(t.id, tn),
       record: recOf(t), pf: pf(t), pa: pa(t),
       moves: (t.transactionCounter&&t.transactionCounter.acquisitions)||0,
       players,
-      starters: players.filter(p=>p.starter),
+      starters,
       bench: players.filter(p=>!p.starter && !p.onIR),
+      // ESPN's projected starters total for the current week (labeled as ESPN's wherever shown)
+      projTeam: Math.round(starters.reduce((a,p)=>a+(p.projWk||0),0)*10)/10,
+      // ESPN's own playoff odds (fraction 0..1 as ESPN sends it) and ESPN's current seed
+      espnPlayoffPct: (sim && sim.playoffPct!=null) ? sim.playoffPct : null,
+      espnSeedRank: t.playoffSeed!=null ? t.playoffSeed : null,
+      // Identity: the client keys members by ESPN team id (MEMBER map), never by ESPN owner ids.
+      // The proxy hashes team.owners / primaryOwner to "m" + 10 hex (api/espn.js sanitize), and the
+      // same ESPN owner id always hashes the same, so History (FEAT-004) uses that hash as the cross-season
+      // owner key (team ids get reused across seasons). data.members carries only hashed ids.
+      owners: (t.owners||[]).slice(),
     };
   }
 
@@ -410,15 +435,19 @@ function weekSuperlatives(D, wk){
 // adds/drops/lineup changes), so a past week's optimal-vs-actual can't be computed exactly. Per the
 // "exact or gone" rule, it's gone rather than shipping a misleading approximation.
 
-// games played for PPG = number of weeks this player has an actual weekly stat entry (dynamic, not hardcoded).
-function playerGames(p){ return Object.keys(p.byWeek||{}).length; }
-function playerPPG(p){ const g = playerGames(p); return g ? (p.pts / g) : 0; }
+// games played + season PPG come straight from ESPN's season line (see playerOf), not from byWeek
+// (the default mRoster only carries the latest week, which made "season PPG" = latest week's points).
+function playerGames(p){ return p.gp||0; }
+function playerPPG(p){ return p.seasonPPG||0; }
 
-// Positional Leaders (season): top scorer per position BY PPG (season total ÷ games played).
+// Positional Leaders (season): top scorer per position BY ESPN season PPG, minimum games played =
+// ceil(completed weeks / 2) so a one-game fluke can't lead.
 function positionalLeaders(D){
   const best = {};  // pos -> {player, team, ppg, ownerId, owner}
+  const minGames = Math.max(1, Math.ceil((D.week-1)/2));
   D.teams.forEach(t=>t.players.forEach(p=>{
     if(!STARTABLE_POS.includes(p.pos)) return;
+    if(playerGames(p) < minGames) return;
     const ppg = playerPPG(p);
     if(!best[p.pos] || ppg > best[p.pos].ppg) best[p.pos] = { player:p.name, team:p.team, ppg, ownerId:t.id, owner:t.short };
   }));

@@ -3,204 +3,72 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>(function(){try{var t=localStorage.getItem("bs-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);}catch(e){}})();</script>
+<meta name="theme-color" content="#0E1116" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F5F6F8" media="(prefers-color-scheme: light)">
 <title>Royal Crushers League Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/family.css?v=1.0.3">
 <style>
-  /* v6 ROYAL PURPLE + GOLD reskin (skin only; content/data/logic unchanged) */
-  :root{
-    --ink:#120a1f;         /* deep purple-tinted near-black bg */
-    --panel:#1c1230;       /* card bg (purple charcoal) */
-    --panel2:#160e28;      /* inner/darker panel */
-    --line:#332248;        /* purple-tinted borders */
-    --txt:#f1ecf8; --mut:#a596bd;   /* light text / muted lavender */
-    --accent:#8b5cf6;      /* ROYAL PURPLE (replaces the old blue accent everywhere) */
-    --accent2:#6d28d9;     /* deeper purple */
-    --gold:#e6b800;        /* gold highlight */
-    --gold2:#d4af37;       /* softer gold */
-    --grn:#33e08a; --red:#ff6b6b; --purp:#b878ff;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--ink);color:var(--txt);
-       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-       -webkit-font-smoothing:antialiased;line-height:1.45}
-  .wrap{max-width:1000px;margin:0 auto;padding:0 14px 60px}
-  /* branded banner header (gold-on-purple) */
-  header.banner{margin:16px 0 6px}
-  /* flat brand band: no gradient, no sheen, no glow (crest deferred by owner; text wordmark only) */
-  .banner-inner{background:#3B2466;border-bottom:3px solid var(--brand-gold,#D4AF37);border-radius:0;
-    padding:16px;display:flex;align-items:center;gap:16px}
+  :root{--accent:#7A4FB5;--accent-text-dark:#A585D6;--accent-text-light:#5E3796;--brand-gold:#D4AF37}
+  /* Royal Crushers Hub on the Box Score family (assets/family.css). Flat fills only: no glow, no drop shadows. */
+  b,strong{font-weight:600}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 16px 48px}
+
+  /* brand band: flat royal purple + gold rule (crest deferred by owner; text wordmark only) */
+  header.banner{margin:16px 0 0}
+  .banner-inner{background:#3B2466;border-bottom:3px solid var(--brand-gold);padding:16px;display:flex;align-items:center;gap:16px}
   .brand{min-width:0}
-  .brand-title{font:600 28px/1 var(--font-display,"Barlow Condensed","Arial Narrow",sans-serif);letter-spacing:.05em;text-transform:uppercase;color:var(--brand-gold,#D4AF37)}
+  .brand-title{font:600 28px/1 var(--font-display);letter-spacing:.05em;text-transform:uppercase;color:var(--brand-gold)}
   @media (min-width:720px){ .brand-title{font-size:40px} }   /* wordmark-only exception, integer px */
-  .brand-sub{font:600 12px/1.2 var(--font-display,"Barlow Condensed","Arial Narrow",sans-serif);letter-spacing:.2em;text-transform:uppercase;
-    color:#fff;opacity:.9;margin-top:6px}
-  .sub{color:var(--mut);font-size:13px;margin-top:8px;padding-left:2px}
+  .brand-sub{font:600 12px/1.2 var(--font-display);letter-spacing:.2em;text-transform:uppercase;color:#fff;opacity:.9;margin-top:6px}
 
-  .bs-tabs{display:flex;gap:8px;margin:16px 0 16px;flex-wrap:wrap}
-  .bs-tabs [role="tab"]{padding:8px 14px;border:1px solid var(--line);border-radius:9px;background:var(--panel);
-       color:var(--mut);font:inherit;font-weight:600;font-size:13px;cursor:pointer;user-select:none}
-  .bs-tabs [role="tab"][aria-selected="true"]{color:var(--txt);border-color:var(--accent)}
-  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  /* app bar under the band: context, freshness, Refresh, Auto, theme */
+  .bs-appbar{flex-wrap:wrap;row-gap:4px;padding:6px var(--sp-4);margin:0 0 var(--sp-2)}
+  .bs-appbar .ctx{font-size:var(--fs-meta);color:var(--text-2);white-space:nowrap}
+  .bs-appbar label{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-meta);color:var(--text-2);min-height:36px;cursor:pointer}
+  #mainTabs{margin:0 0 var(--sp-4)}
 
-  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
-  .btn{padding:7px 13px;border:1px solid var(--line);border-radius:8px;background:var(--panel);
-       color:var(--txt);font-weight:700;font-size:12.5px;cursor:pointer}
-  .btn:hover{border-color:var(--mut)}
-  .btn.primary{background:var(--accent);color:var(--ink);border-color:var(--accent)}
-  .status{color:var(--mut);font-size:12px}
+  .loading{color:var(--text-2);padding:40px 0;text-align:center}
+  .note{color:var(--text-2);font-size:var(--fs-meta);text-align:center;padding:16px 0}
+  .err{color:var(--down);border:1px solid var(--down);border-radius:var(--r-panel);padding:12px;margin:12px 0;font-size:13px;line-height:1.6}
+  .cap{color:var(--text-2);font-size:var(--fs-meta);margin:0 0 var(--sp-2)}
+  .cap:last-child{margin-bottom:0}
+  .bs-panel-head{flex-wrap:wrap}
+  .bs-panel-body .wtabs{margin:0 0 var(--sp-1)}
+  .bs-panel-body .bs-table-wrap{margin:0 calc(-1 * var(--sp-3))}
+  .bs-panel-body .bs-table-wrap + .cap,.bs-panel-body .cap + .bs-table-wrap{margin-top:var(--sp-2)}
+  .bs-seg{margin:0 0 var(--sp-3)}
+  .sec-label{margin:var(--sp-4) 0 var(--sp-2)}
+  .sec-label:first-child{margin-top:0}
 
-  .loading{color:var(--mut);padding:40px 0;text-align:center}
-  .err{color:var(--red);border:1px solid var(--red);border-radius:9px;padding:14px;margin:10px 0;font-size:13px;line-height:1.6}
-  .note{color:var(--mut);font-size:12.5px;text-align:center;padding:16px 0}
+  /* table cells */
+  .tm-cell{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+  .bs-table td.wrap-ok{white-space:normal;min-width:120px;line-height:1.35;padding-top:6px;padding-bottom:6px}
+  .bs-table td.lose-side{color:var(--text-2)}
+  /* stakes matchup tables: fixed columns so If win / If lose wrap inside 390px instead of scrolling */
+  table.stk-table{table-layout:fixed}
+  .stk-table th:first-child{width:30%}
+  .stk-table td:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .stk-table td.wrap-ok{min-width:0}
+  .bs-table tr.seed1 td:first-child{box-shadow:inset 3px 0 0 var(--brand-gold)}
+  .live{color:var(--down)}
+  .why{color:var(--text-2);font-size:var(--fs-micro)}
 
-  .card{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:14px 16px;margin-bottom:14px}
-  .card h2{font-size:15px;font-weight:800;margin:0 0 4px}
-  .card .cap{color:var(--mut);font-size:12px;margin:0 0 12px}
-
-  .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
-  @media(max-width:560px){.grid{grid-template-columns:1fr}}
-
-  /* superlative tiles */
-  .tile{border:1px solid var(--line);border-radius:10px;background:var(--panel2);padding:12px}
-  .tile .k{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
-  .tile .v{font-size:15px;font-weight:800;margin-top:4px}
-  .tile .d{font-size:12px;color:var(--mut);margin-top:2px;font-variant-numeric:tabular-nums}
-  .tile.good .k{color:var(--grn)} .tile.bad .k{color:var(--red)} .tile.luck .k{color:var(--gold)} .tile.pos .k{color:var(--purp)}
-
-  /* ranked rows */
-  .rows{display:flex;flex-direction:column;gap:2px}
-  .row{display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:center;
-       padding:8px 6px;border-top:1px solid var(--line);font-size:13.5px}
-  .row:first-child{border-top:none}
-  .row .rk{font-weight:800;color:var(--mut);text-align:center;font-variant-numeric:tabular-nums}
-  .row .nm{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-  .row .nm .sub2{color:var(--mut);font-weight:600;font-size:11.5px;margin-left:6px}
-  .row .val{font-weight:800;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
-  .row .val .rec{color:var(--mut);font-weight:600;font-size:12px;margin-left:6px}
-  .row.me{background:rgba(139,92,246,.10)}
-
-  /* matchup preview */
-  .mu{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;
-      border-top:1px solid var(--line);padding:10px 4px}
-  .mu:first-child{border-top:none}
-  .mu .side{min-width:0}
-  .mu .side.r{text-align:right}
-  .mu .tn{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .mu .tr{color:var(--mut);font-size:11.5px;font-variant-numeric:tabular-nums}
-  .mu .vs{color:var(--mut);font-size:11px;font-weight:800;text-align:center}
-  .mu .mov{color:var(--grn);font-weight:800;font-variant-numeric:tabular-nums}
-  .mu .side.win .tn{color:var(--txt)} .mu .side .tn{color:var(--mut)}
-  .gstat{display:block;margin-top:3px;font-size:9px;font-weight:800;letter-spacing:.05em}
-  .gstat.live{color:#ff5b5b} .gstat.final{color:var(--mut)}
-  .livetxt{color:#ff5b5b}
-  .mu .side.win .tr{color:var(--txt);font-weight:800} .mu .side .tr{color:var(--mut);font-weight:700}
-  /* week tabs */
-  .wtabs{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 12px}
-  .wtab{padding:5px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);
-        color:var(--mut);font-weight:700;font-size:12.5px;cursor:pointer;user-select:none}
-  .wtab.on{color:var(--txt);border-color:var(--accent);background:rgba(139,92,246,.16)}
-
-  /* playoff status pills */
-  .pill{display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:7px;border:1px solid;white-space:nowrap}
-  .pill.clinch{color:var(--grn);border-color:var(--grn);background:rgba(51,224,138,.12)}
-  .pill.elim{color:var(--red);border-color:var(--red);background:rgba(255,96,96,.12)}
-  .pill.alive{color:var(--gold);border-color:var(--gold);background:rgba(255,207,63,.10)}
-  .pline{color:var(--mut);font-size:12px;margin-top:3px;line-height:1.5}
-
-  /* ---- Playoff Races ---- */
-  .race-list{display:flex;flex-direction:column;gap:2px;margin-top:4px}
-  .race-row{display:flex;align-items:center;gap:9px;padding:9px 4px;border-top:1px solid var(--line);flex-wrap:wrap}
-  .race-row:first-child{border-top:none}
-  .race-team{display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 auto}
-  .race-seed{color:var(--mut);font-weight:800;width:16px;text-align:center;flex:0 0 auto;font-variant-numeric:tabular-nums}
-  .race-nm{font-weight:800;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-  .race-rec{color:var(--mut);font-size:11.5px;font-weight:600;flex:0 0 auto}
-  .race-tag{flex:0 0 auto}
-  .race-pill{display:inline-block;font-size:10px;font-weight:800;padding:2px 8px;border-radius:7px;border:1px solid;white-space:nowrap}
-  .race-pill.clinch{color:var(--grn);border-color:var(--grn);background:rgba(51,224,138,.12)}
-  .race-pill.elim{color:var(--red);border-color:var(--red);background:rgba(255,96,96,.12)}
-  .race-pill.alive{color:var(--gold);border-color:var(--gold);background:rgba(255,207,63,.10)}
-  .race-pill.lead{color:var(--accent);border-color:var(--accent);background:rgba(139,92,246,.14)}
-  .race-pill.chase{color:var(--mut);border-color:var(--line);background:var(--panel2)}
-  .race-need{color:var(--mut);font-size:11.5px;font-weight:600;flex:1 1 100%;padding-left:31px}
-  @media(min-width:520px){.race-need{flex:1 1 auto;padding-left:0;text-align:right}}
-  .race-extra{color:var(--txt);font-weight:700}
-  .race-cut{color:var(--red);font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
-            text-align:center;padding:6px 0 3px;border-top:1px dashed var(--red);margin-top:2px;opacity:.85}
-
-  /* ---- Weekly Stakes ---- */
-  /* segmented filter (Seeding · Playoff odds · Both) */
-  .stk-filter{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 14px}
-  .stk-seg{padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);
-           color:var(--mut);font-weight:700;font-size:12.5px;cursor:pointer;user-select:none}
-  .stk-seg.on{color:var(--txt);border-color:var(--accent);background:rgba(139,92,246,.16)}
-  /* a stakes matchup card = the .mu row + a stakes body under it */
-  .stk-card{border:1px solid var(--line);border-radius:12px;background:var(--panel2);padding:11px 12px;margin-bottom:11px}
-  .stk-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
-  .stk-imp{font-size:10.5px;font-weight:800;padding:2px 9px;border-radius:7px;border:1px solid;white-space:nowrap;letter-spacing:.02em}
-  .stk-imp.pivotal{color:#ff8c3b;border-color:#ff8c3b;background:rgba(255,140,59,.12)}
-  .stk-imp.meaningful{color:var(--gold);border-color:var(--gold);background:rgba(255,207,63,.10)}
-  .stk-imp.low{color:var(--mut);border-color:var(--line);background:var(--panel)}
-  .stk-mu{display:flex;align-items:center;gap:8px;font-weight:800;font-size:14px;flex:1 1 auto;min-width:0}
-  .stk-mu .vs{color:var(--mut);font-weight:700;font-size:12px}
-  .stk-mu .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-  /* per-team win/lose outcome rows */
-  .stk-team{border-top:1px solid var(--line);padding:8px 0 4px}
-  .stk-team:first-of-type{border-top:none}
-  .stk-tname{font-weight:800;font-size:13px;margin-bottom:4px;display:flex;align-items:center;gap:7px}
-  .stk-out{display:flex;gap:8px;flex-wrap:wrap}
-  .stk-chip{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:8px;border:1px solid var(--line);
-            background:var(--panel);color:var(--mut);white-space:nowrap}
-  .stk-chip b{font-weight:800}
-  .stk-chip.win{border-color:var(--grn);color:var(--grn);background:rgba(51,224,138,.10)}
-  .stk-chip.lose{border-color:var(--red);color:var(--red);background:rgba(255,96,96,.10)}
-  .stk-chip .arr{opacity:.7;font-weight:800;margin:0 2px}
-  .stk-note{color:var(--mut);font-size:11.5px;margin-top:6px;line-height:1.5}
-
-  /* member avatars */
+  /* member avatars (round logo, initial fallback) */
   .mav{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;border-radius:50%;
-       overflow:hidden;background:var(--panel2);border:1px solid var(--line);vertical-align:middle}
+       overflow:hidden;background:var(--surface-2);border:1px solid var(--border);vertical-align:middle}
   .mav img{width:100%;height:100%;object-fit:cover;display:block}
-  .mav-fb{width:100%;height:100%;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--mut)}
-  /* player image (top scorers): headshot/team-logo round, position-color initial fallback */
+  .mav-fb{width:100%;height:100%;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--text-2)}
+  /* player image: headshot -> team logo -> position-color initial (the one sanctioned small fill) */
   .pav{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;border-radius:50%;
-       overflow:hidden;background:var(--panel2);border:1px solid var(--line);vertical-align:middle}
+       overflow:hidden;background:var(--surface-2);border:1px solid var(--border);vertical-align:middle}
   .pav img{width:100%;height:100%;object-fit:cover;display:block}
-  .pav-fb{width:100%;height:100%;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff}
-  /* At-a-glance list (fixed: full names, no clip) */
-  .ag-list{display:flex;flex-direction:column;gap:2px}
-  .ag-row{display:flex;align-items:center;gap:9px;padding:8px 4px;border-top:1px solid var(--line);flex-wrap:wrap}
-  .ag-row:first-child{border-top:none}
-  .ag-nm{font-weight:800;font-size:14px;flex:0 0 auto}
-  .ag-txt{color:var(--mut);font-size:12.5px;font-weight:600;flex:1 1 100%;padding-left:35px}
-  @media(min-width:480px){.ag-txt{flex:1 1 auto;padding-left:0;text-align:right}}
-  .tm-cell{display:inline-flex;align-items:center;gap:7px}
-  /* top-3 rows inside a tile */
-  .t3{display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 0;border-top:1px solid var(--line)}
-  .t3:first-of-type{border-top:none;margin-top:4px}
-  .t3r{color:var(--mut);font-weight:800;width:12px;text-align:center;flex:0 0 auto}
-  .t3n{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1 1 auto}
-  .t3o{color:var(--mut);font-size:10.5px;flex:0 0 auto}
-  .t3p{font-weight:800;font-variant-numeric:tabular-nums;flex:0 0 auto;margin-left:2px}
-  /* trade block grid */
-  .blk-legend{display:flex;gap:8px;margin:2px 0 12px;flex-wrap:wrap}
-  .bpill{font-size:10.5px;font-weight:800;padding:2px 9px;border-radius:7px;border:1px solid}
-  .bpill.surplus{color:var(--grn);border-color:var(--grn);background:rgba(51,224,138,.12)}
-  .bpill.short{color:var(--red);border-color:var(--red);background:rgba(255,96,96,.12)}
-  .bpill.ok{color:var(--mut);border-color:var(--line);background:var(--panel2)}
-  .blk-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  table.blk{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
-  table.blk th,table.blk td{padding:8px 6px;text-align:center;font-size:13px;border-top:1px solid var(--line)}
-  table.blk thead th{color:var(--mut);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;border-top:none}
-  table.blk th.tmh,table.blk td.tmh{text-align:left;font-weight:700;white-space:nowrap;position:sticky;left:0;background:var(--panel);z-index:1}
-  table.blk td.bc{border-radius:0}
-  table.blk td.bc .bn{display:inline-block;min-width:22px;font-weight:800}
-  table.blk td.bc.surplus{background:rgba(51,224,138,.14);color:var(--grn)}
-  table.blk td.bc.short{background:rgba(255,96,96,.14);color:var(--red)}
-  table.blk td.bc.ok{color:var(--mut)}
-  .foot{color:var(--mut);font-size:11.5px;margin-top:26px;text-align:center;line-height:1.6}
+  .pav-fb{width:100%;height:100%;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--surface)}
+
+  .foot{color:var(--text-2);font-size:var(--fs-micro);margin-top:24px;text-align:center}
   .hide{display:none}
 </style>
 </head>
@@ -214,20 +82,21 @@
         <div class="brand-sub">League Hub</div>
       </div>
     </div>
-    <div class="sub" id="sub">Loading…</div>
   </header>
+
+  <div class="bs-appbar">
+    <span class="ctx" id="sub">Loading…</span>
+    <span class="bs-fresh" id="status" role="status"></span>
+    <button type="button" class="bs-btn" id="refreshBtn">Refresh</button>
+    <label><input type="checkbox" id="autoRefresh" checked> Auto</label>
+    <button type="button" class="bs-btn" id="themeBtn">Theme: System</button>
+  </div>
 
   <div class="bs-tabs" role="tablist" aria-label="Sections" id="mainTabs">
     <button type="button" role="tab" id="tab-insights" data-key="insights" aria-controls="pane-insights" aria-selected="true">League Insights</button>
     <button type="button" role="tab" id="tab-stakes" data-key="stakes" aria-controls="pane-stakes" aria-selected="false" tabindex="-1">Stakes</button>
     <button type="button" role="tab" id="tab-playoffs" data-key="playoffs" aria-controls="pane-playoffs" aria-selected="false" tabindex="-1">Playoff Picture</button>
     <button type="button" role="tab" id="tab-block" data-key="block" aria-controls="pane-block" aria-selected="false" tabindex="-1">Trade Block</button>
-  </div>
-
-  <div class="bar">
-    <button class="btn primary" id="refreshBtn">↻ Refresh</button>
-    <span class="status" id="status"></span>
-    <label class="status" style="margin-left:auto"><input type="checkbox" id="autoRefresh" checked> auto-refresh</label>
   </div>
 
   <div id="errbox"></div>
@@ -284,15 +153,15 @@ function avatarHtml(id, label, size){
 
 // player image: ESPN headshot (by player id) -> NFL team logo (by abbrev) -> position-colored initial.
 // Chained onerror so a missing headshot falls back to the team logo, then to a clean initial (never a broken img).
-const POS_COLOR = {QB:"#c44",RB:"#2a8",WR:"#48c",TE:"#e69420",DEF:"#777",K:"#95a"};
+const POS_COLOR = {QB:"var(--pos-qb)",RB:"var(--pos-rb)",WR:"var(--pos-wr)",TE:"var(--pos-te)",DEF:"var(--pos-def)",K:"var(--pos-k)"};
 function playerImgHtml(pid, team, pos, size){
   const px = size||18;
   const abbr = (team||"").toLowerCase();
   const head = pid ? `https://a.espncdn.com/i/headshots/nfl/players/full/${encodeURIComponent(pid)}.png` : "";
   const logo = abbr ? `https://a.espncdn.com/i/teamlogos/nfl/500/${encodeURIComponent(abbr)}.png` : "";
   const initial = esc((String(pos||"?").trim()[0]||"?").toUpperCase());
-  const color = POS_COLOR[pos] || "#666";
-  const fb = `<span class="pav-fb" style="display:none;background:${color}">${initial}</span>`;
+  const color = POS_COLOR[pos] || "var(--pos-k)";
+  const fb = `<span class="pav-fb" aria-hidden="true" style="display:none;background:${color}">${initial}</span>`;
   // build the onerror chain: headshot -> team logo -> initial
   if(head){
     const onErr = logo
@@ -303,7 +172,7 @@ function playerImgHtml(pid, team, pos, size){
   if(logo){
     return `<span class="pav" style="width:${px}px;height:${px}px"><img src="${logo}" alt="" loading="lazy" onerror="this.style.display='none';this.parentNode.querySelector('.pav-fb').style.display='flex'">${fb}</span>`;
   }
-  return `<span class="pav" style="width:${px}px;height:${px}px"><span class="pav-fb" style="display:flex;background:${color}">${initial}</span></span>`;
+  return `<span class="pav" style="width:${px}px;height:${px}px"><span class="pav-fb" aria-hidden="true" style="display:flex;background:${color}">${initial}</span></span>`;
 }
 
 // auto-refresh: light poll so an open tab stays current on game days (does NOT push; re-pulls on interval)
@@ -564,20 +433,38 @@ function paintInsights(){
   const D = DATA; const el = document.getElementById("pane-insights");
   if(!D){ el.innerHTML = `<div class="note">No data.</div>`; return; }
   const s = [];
-  const dispOf = id => D.byId[id]?.disp || "—";
   const shortOf = id => D.byId[id]?.short || "—";
+  const recTxt = r => `${r.w}-${r.l}${r.t?"-"+r.t:""}`;
 
   if(D.week<=2){
-    s.push(`<div class="card"><div class="cap">Week ${D.week}: small samples.</div></div>`);
+    s.push(`<p class="cap">Week ${D.week}: small samples.</p>`);
   }
 
-  // --- STANDINGS (plain: W-L, points-for tiebreaker) ---
-  s.push(`<div class="card"><h2>Standings</h2><div class="rows">`
-    + standingsList(D).map(r=>`<div class="row">
-        <span class="rk">${r.rank}</span>
-        <span class="nm">${esc(r.disp)}</span>
-        <span class="val">${r.rec.w}-${r.rec.l}${r.rec.t?"-"+r.rec.t:""}<span class="rec">${pts(r.pf)} pf</span></span>
-      </div>`).join("") + `</div></div>`);
+  // --- STANDINGS: one real table (order/values from standingsList(D); render never re-sorts) ---
+  const sl = standingsList(D);
+  const status = standingStatus(D);
+  const leaderW = sl.length ? sl[0].rec.w : 0;
+  const STATUS_CLS = { clinch:"bs-up", elim:"bs-down", alive:"bs-dim" };
+  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Standings</h2><span class="bs-meta">Top ${D.playoffTeams} make the playoffs</span></div>
+    <div class="bs-table-wrap"><table class="bs-table bs-table--stick1" id="standingsTable">
+    <thead><tr><th class="num" scope="col">Rk</th><th scope="col">Team</th><th class="num" scope="col">W-L</th>
+      <th class="num" scope="col" title="Points for (breaks ties)">PF</th><th class="num" scope="col" title="Points against">PA</th>
+      <th class="num" scope="col" title="Games behind the leader">GB</th><th scope="col">Streak</th><th scope="col">Status</th></tr></thead><tbody>`
+    + sl.map((r,i)=>{
+        const t = D.byId[r.id]; const st = status[r.id] || {key:"alive",label:"ALIVE",why:""};
+        const cut = (i+1)===D.playoffTeams ? ' class="bs-cut"' : "";
+        return `<tr>
+          <td class="num${cut?" bs-cut":""}">${r.rank}</td>
+          <td${cut}><span class="tm-cell">${avatarHtml(r.id, t.short, 22)}<span class="tm-name">${esc(r.disp)}</span></span></td>
+          <td class="num${cut?" bs-cut":""}">${recTxt(r.rec)}</td>
+          <td class="num${cut?" bs-cut":""}">${pts(r.pf)}</td>
+          <td class="num${cut?" bs-cut":""}">${pts(t.pa)}</td>
+          <td class="num${cut?" bs-cut":""}">${i===0?"—":(leaderW - r.rec.w)}</td>
+          <td${cut}>${streakOf(D, r.id)}</td>
+          <td${cut}><span class="${STATUS_CLS[st.key]||"bs-dim"}"${st.why?` title="${esc(st.why)}"`:""}>${st.label}</span></td>
+        </tr>`;
+      }).join("")
+    + `</tbody></table></div></section>`);
 
   // --- WEEKLY VIEW: tabs for ALL regular-season weeks; default = current week ---
   const allWeeks = []; for(let w=1; w<=D.regWeeks; w++) allWeeks.push(w);
@@ -592,58 +479,60 @@ function paintInsights(){
   const wgScored = wgAll.filter(g=>(g.homePts||g.awayPts)>0);
   const anyScores = wgScored.length>0;
 
-  // matchup row: score on EACH side, winner highlighted, margin attached to the winner. No lone middle number.
-  // Per-game status badge: LIVE (computed from starters, not yet finalized) vs FINAL (ESPN finalized totalPoints).
-  function muRow(g){
-    const homeWins = !g.tie && g.homePts>g.awayPts;
-    const awayWins = !g.tie && g.awayPts>g.homePts;
+  // results table: Away · score · Home · score · status. Winner in --text, loser in --text-2, margin as a micro-label.
+  // Per-game status: LIVE (computed from starters, not yet finalized) vs FINAL (ESPN finalized totalPoints).
+  function resultRow(g){
     const scored = (g.homePts||g.awayPts)>0;
-    const badge = g.finalized ? `<span class="gstat final">FINAL</span>`
-                : g.live ? `<span class="gstat live">● LIVE</span>` : "";
-    const homeSide = `<div class="side ${homeWins?'win':''}">
-        <div class="tn">${homeWins?'▸ ':''}${esc(shortOf(g.homeId))}</div>
-        <div class="tr">${scored?pts(g.homePts):'—'}${homeWins?` <span class="mov">+${pts(g.margin)}</span>`:''}</div></div>`;
-    const awaySide = `<div class="side r ${awayWins?'win':''}">
-        <div class="tn">${awayWins?'▸ ':''}${esc(shortOf(g.awayId))}</div>
-        <div class="tr">${awayWins?`<span class="mov">+${pts(g.margin)}</span> `:''}${scored?pts(g.awayPts):'—'}</div></div>`;
-    return `<div class="mu">${homeSide}<div class="vs">${g.tie&&scored?'tie':'vs'}${badge}</div>${awaySide}</div>`;
+    const homeWins = scored && !g.tie && g.homePts>g.awayPts;
+    const awayWins = scored && !g.tie && g.awayPts>g.homePts;
+    const cls = (won, lost) => won ? "" : (lost ? " lose-side" : "");
+    const st = g.finalized ? `<span class="bs-micro">FINAL</span>`
+             : g.live ? `<span class="bs-micro live">● LIVE</span>` : (scored ? "" : `<span class="bs-micro">—</span>`);
+    const mov = scored ? (g.tie ? ` <span class="bs-micro">tie</span>` : ` <span class="bs-micro">+${pts(g.margin)}</span>`) : "";
+    return `<tr>
+      <td class="${cls(awayWins, homeWins).trim()}">${esc(shortOf(g.awayId))}</td>
+      <td class="num${cls(awayWins, homeWins)}">${scored?pts(g.awayPts):"—"}</td>
+      <td class="${cls(homeWins, awayWins).trim()}">${esc(shortOf(g.homeId))}</td>
+      <td class="num${cls(homeWins, awayWins)}">${scored?pts(g.homePts):"—"}</td>
+      <td>${st}${mov}</td></tr>`;
   }
+  const resultsTable = rowsHtml => `<div class="bs-table-wrap"><table class="bs-table"><thead><tr><th scope="col">Away</th><th class="num" scope="col">Pts</th>
+      <th scope="col">Home</th><th class="num" scope="col">Pts</th><th scope="col">Status</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
 
   let weekBody;
   if(isFuture || !anyScores){
-    weekBody = `<div class="cap">${isFuture?`Week ${wk} hasn't been played yet — scheduled matchups:`:`No scores yet for Week ${wk}.`}</div>`
-      + wgAll.map(g=>`<div class="mu"><div class="side"><div class="tn">${esc(shortOf(g.homeId))}</div></div><div class="vs">vs</div><div class="side r"><div class="tn">${esc(shortOf(g.awayId))}</div></div></div>`).join("");
+    weekBody = `<p class="cap">${isFuture?`Week ${wk} schedule.`:`No scores yet for Week ${wk}.`}</p>` + resultsTable(wgAll.map(resultRow).join(""));
   } else {
     const anyLive = wgScored.some(g=>g.live);
     const liveNote = anyLive
-      ? `<div class="cap">Week ${wk} — <b class="livetxt">● LIVE</b> scores are computed from starters' points while games are in progress; they turn FINAL once ESPN locks the week (Tue after MNF). Players in games that haven't kicked off yet show 0.</div>`
+      ? `<p class="cap"><span class="live">● LIVE</span> scores are summed from starters until ESPN finalizes the week (Tuesday). Players yet to kick off show 0.</p>`
       : "";
-    weekBody = liveNote + wgScored.map(muRow).join("");
+    weekBody = liveNote + resultsTable(wgScored.map(resultRow).join(""));
   }
 
-  // per-week superlatives (margin- + context-aware) — only when there are real scores
+  // per-week superlatives (margin- + context-aware) — compact table, only when there are real scores
   const sup = anyScores ? weekSuperlatives(D, wk) : null;
   let supHtml = "";
   if(sup){
-    const tile=(cls,k,v,d)=>`<div class="tile ${cls}"><div class="k">${k}</div><div class="v">${esc(v)}</div><div class="d">${esc(d)}</div></div>`;
-    supHtml = `<div class="cap" style="margin-top:12px">Week ${wk} superlatives${isCurrent?' (live)':''}</div><div class="grid">`
-      + tile("good","Highest Scorer", shortOf(sup.high.id), `${pts(sup.high.pts)} pts`)
-      + tile("bad","Lowest Scorer", shortOf(sup.low.id), `${pts(sup.low.pts)} pts`)
-      + tile("","Biggest Blowout", shortOf(sup.blowout.winId), `beat ${esc(shortOf(sup.blowout.loseId))} by ${pts(sup.blowout.margin)}`)
-      + tile("","Closest Game", shortOf(sup.nailbiter.winId), `won by just ${pts(sup.nailbiter.margin)} over ${esc(shortOf(sup.nailbiter.loseId))}`)
-      + (sup.unlucky ? tile("luck","Unlucky", shortOf(sup.unlucky.id),
+    const row=(cls,k,v,d)=>`<tr><td><span class="bs-micro${cls?" "+cls:""}">${k}</span></td><td>${esc(v)}</td><td class="wrap-ok">${esc(d)}</td></tr>`;
+    supHtml = `<h3 class="bs-micro sec-label">Week ${wk} superlatives${isCurrent?" (live)":""}</h3>`
+      + `<div class="bs-table-wrap"><table class="bs-table"><thead><tr><th scope="col">Award</th><th scope="col">Team</th><th scope="col">Detail</th></tr></thead><tbody>`
+      + row("bs-up","Highest scorer", shortOf(sup.high.id), `${pts(sup.high.pts)} pts`)
+      + row("bs-down","Lowest scorer", shortOf(sup.low.id), `${pts(sup.low.pts)} pts`)
+      + row("","Biggest blowout", shortOf(sup.blowout.winId), `beat ${shortOf(sup.blowout.loseId)} by ${pts(sup.blowout.margin)}`)
+      + row("","Closest game", shortOf(sup.nailbiter.winId), `won by ${pts(sup.nailbiter.margin)} over ${shortOf(sup.nailbiter.loseId)}`)
+      + (sup.unlucky ? row("bs-warn","Unlucky", shortOf(sup.unlucky.id),
           sup.unlucky.isTopScore
-            ? `${pts(sup.unlucky.pts)} pts — most in the league, but still lost`
-            : `${pts(sup.unlucky.pts)} pts and lost — would've beaten ${sup.unlucky.wouldBeat} of ${sup.unlucky.others} other teams`) : "")
-      + (sup.lucky ? tile("luck","Lucky", shortOf(sup.lucky.id),
-          `won with just ${pts(sup.lucky.pts)} pts — only outscored ${sup.lucky.outscored} of ${sup.lucky.others} other teams`) : "")
-      + `</div>`;
+            ? `${pts(sup.unlucky.pts)} pts, most in the league, and lost`
+            : `${pts(sup.unlucky.pts)} pts and lost; would've beaten ${sup.unlucky.wouldBeat} of ${sup.unlucky.others} other teams`) : "")
+      + (sup.lucky ? row("bs-warn","Lucky", shortOf(sup.lucky.id),
+          `won with ${pts(sup.lucky.pts)} pts; outscored only ${sup.lucky.outscored} of ${sup.lucky.others} other teams`) : "")
+      + `</tbody></table></div>`;
   }
 
-  s.push(`<div class="card"><h2>Weekly Results</h2>${weekTabs}</div>`);
+  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Weekly Results</h2></div><div class="bs-panel-body">${weekTabs}</div>`);
   // single week tabpanel: everything scoped to the selected week (results, superlatives, top scorers)
-  s.push(`<div id="insWeekPane" role="tabpanel" aria-labelledby="insWk-${wk}" tabindex="0">`);
-  s.push(`<div class="card">${weekBody}${supHtml}</div>`);
+  s.push(`<div class="bs-panel-body" id="insWeekPane" role="tabpanel" aria-labelledby="insWk-${wk}" tabindex="0">${weekBody}${supHtml}`);
 
   // --- TOP 3 weekly scorers per position (for the selected week) ---
   if(anyScores){
@@ -651,23 +540,28 @@ function paintInsights(){
     const order = ["QB","RB","WR","TE","DEF","K"].filter(p=>tops[p] && tops[p].length);
     if(order.length){
       const posName = {QB:"QB",RB:"RB",WR:"WR",TE:"TE",DEF:"D/ST",K:"K"};
-      s.push(`<div class="card"><h2>Top Scorers — Week ${wk}${isCurrent?' (live)':''}</h2><div class="cap">Highest-scoring players at each position this week.</div><div class="grid">`
-        + order.map(P=>`<div class="tile"><div class="k">${posName[P]}</div>`
-            + tops[P].map((x,i)=>`<div class="t3"><span class="t3r">${i+1}</span>${playerImgHtml(x.id,x.team,x.pos,18)}<span class="t3n">${esc(x.player)}</span><span class="t3o">${esc(x.owner)}</span><span class="t3p">${pts(x.pts)}</span></div>`).join("")
-            + `</div>`).join("")
-        + `</div></div>`);
+      s.push(`<h3 class="bs-micro sec-label">Top scorers, Week ${wk}${isCurrent?" (live)":""}</h3>`
+        + `<div class="bs-table-wrap"><table class="bs-table"><thead><tr><th scope="col">Pos</th><th class="num" scope="col">#</th><th scope="col">Player</th>`
+        + `<th scope="col">Owner</th><th class="num" scope="col">Pts</th></tr></thead><tbody>`
+        + order.map(P=> tops[P].map((x,i)=>`<tr><td><span class="pos-${P}">${posName[P]}</span></td><td class="num">${i+1}</td>`
+            + `<td><span class="tm-cell">${playerImgHtml(x.id,x.team,x.pos,20)}<span>${esc(x.player)}</span></span></td>`
+            + `<td>${esc(x.owner)}</td><td class="num">${pts(x.pts)}</td></tr>`).join("")).join("")
+        + `</tbody></table></div>`);
     }
   }
+  s.push(`</div></section>`); // end #insWeekPane + Weekly Results panel
 
-  s.push(`</div>`); // end #insWeekPane
-
-  // --- Positional leaders (season) ---
+  // --- Positional leaders (season, by PPG) ---
   const pl = positionalLeaders(D);
   const plKeys = STARTABLE_POS.filter(p=>pl[p]);
   if(plKeys.length){
-    s.push(`<div class="card"><h2>Positional Leaders</h2><div class="cap">Season leader at each position by points per game (season total ÷ games played).</div><div class="grid">`
-      + plKeys.map(p=>`<div class="tile pos"><div class="k">${p}</div><div class="v">${esc(pl[p].player)}</div><div class="d">${avatarHtml(pl[p].ownerId,pl[p].owner,16)} ${pts(pl[p].ppg)} PPG · ${esc(pl[p].owner)}</div></div>`).join("")
-      + `</div></div>`);
+    s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Positional Leaders</h2><span class="bs-meta">Season, points per game</span></div>`
+      + `<div class="bs-table-wrap"><table class="bs-table"><thead><tr><th scope="col">Pos</th><th scope="col">Player</th><th scope="col">Owner</th>`
+      + `<th class="num" scope="col">PPG</th></tr></thead><tbody>`
+      + plKeys.map(p=>`<tr><td><span class="pos-${p}">${p}</span></td><td>${esc(pl[p].player)}</td>`
+          + `<td><span class="tm-cell">${avatarHtml(pl[p].ownerId,pl[p].owner,20)}<span>${esc(pl[p].owner)}</span></span></td>`
+          + `<td class="num">${pts(pl[p].ppg)}</td></tr>`).join("")
+      + `</tbody></table></div></section>`);
   }
 
   // (Points Left on the Bench removed in v3 — can't be computed exactly for past weeks; see note above.)
@@ -683,11 +577,60 @@ function paintInsights(){
   });
 }
 
-// week tablist (1..regWeeks) as real tab buttons; current week carries aria-current="date".
+// week tablist (1..regWeeks) as real tab buttons in a scroll-snap row; current week carries aria-current="date".
 function weekTabsHtml(listId, idPrefix, paneId, weeks, sel, cur){
-  return `<div class="wtabs" role="tablist" aria-label="Week" id="${listId}">` + weeks.map(w =>
-    `<button type="button" role="tab" class="wtab" id="${idPrefix}${w}" data-key="${w}" aria-controls="${paneId}"`
+  return `<div class="bs-tabs bs-tabs--sub wtabs" role="tablist" aria-label="Week" id="${listId}">` + weeks.map(w =>
+    `<button type="button" role="tab" id="${idPrefix}${w}" data-key="${w}" aria-controls="${paneId}"`
     + ` aria-selected="${w===sel}" tabindex="${w===sel?0:-1}"${w===cur?' aria-current="date"':''}>Wk ${w}</button>`).join("") + `</div>`;
+}
+
+// Current streak for one team from completed games, newest first: "W3" / "L1" / "T1", "—" before any game.
+// No winner (e.g. "UNDECIDED" past weeks) + unequal points -> the higher score wins, matching weekGames().
+function streakOf(D, teamId){
+  const gs = completedGames(D).filter(g=>(g.homeId===teamId||g.awayId===teamId) && !(g.homePts===0 && g.awayPts===0))
+    .sort((a,b)=>b.period-a.period);
+  let kind = null, n = 0;
+  for(const g of gs){
+    const home = g.homeId===teamId;
+    let r;
+    if(g.winner==="HOME") r = home?"W":"L";
+    else if(g.winner==="AWAY") r = home?"L":"W";
+    else if(g.winner==="TIE" || g.homePts===g.awayPts) r = "T";
+    else r = (g.homePts>g.awayPts) === home ? "W" : "L";
+    if(kind===null) kind = r;
+    if(r!==kind) break;
+    n++;
+  }
+  return kind ? kind+n : "—";
+}
+
+// Per-team playoff status, extracted verbatim from the old paintPlayoffs() "Standings & Status" loop.
+// Returns {id -> {key:"clinch|elim|alive", label:"IN|OUT|ALIVE", why}}.
+function standingStatus(D){
+  const st = standings(D);
+  const played = Math.max(0, D.week-1);
+  const gamesLeft = Math.max(0, D.regWeeks - played);
+  const cutoff = D.playoffTeams;
+  const out = {};
+  st.forEach((t,i)=>{
+    const inLine = i < cutoff;
+    // ALIVE by default early; only mark clinched/eliminated when math is certain
+    let status="alive", label="ALIVE", why="";
+    if(gamesLeft===0){
+      status = inLine ? "clinch" : "elim"; label = inLine ? "IN" : "OUT";
+    } else {
+      // eliminated if even winning out can't catch the current cutoff team's floor (lose-out)... too strict early -> keep ALIVE
+      const bestFinish = t.w + gamesLeft;
+      const cutoffFloor = (st[cutoff-1]?.w)||0; // current #cutoff wins (won't decrease)
+      if(bestFinish < cutoffFloor && i>=cutoff){ status="elim"; label="OUT"; why="can't catch the cut line even winning out"; }
+      // clinched if worst finish still beats the best possible of the first team out
+      const worstFinish = t.w;
+      const chaserCeil = (st[cutoff]?.w||0) + gamesLeft;
+      if(i<cutoff && worstFinish > chaserCeil){ status="clinch"; label="IN"; why="can't be caught even losing out"; }
+    }
+    out[t.id] = { key:status, label, why };
+  });
+  return out;
 }
 
 /* ============================ PLAYOFF SCENARIOS ============================ */
@@ -905,35 +848,35 @@ function paintStakes(){
   rows.sort((x,y)=> y.score - x.score);
 
   const s = [];
-  // header
-  s.push(`<div class="card"><h2>Weekly Stakes — Week ${wk}${isCurrent?" (current)":isFuture?" (upcoming)":" (past)"}</h2>
-    <div class="cap">Swing between a win and a loss. Top ${cutoff} of ${D.size} make the playoffs. Most pivotal first.</div>`);
+  // header panel: title, caption, week tablist
+  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Weekly Stakes, Week ${wk}</h2><span class="bs-meta">${isCurrent?"Current":isFuture?"Upcoming":"Past"}</span></div>
+    <div class="bs-panel-body"><p class="cap">Swing between a win and a loss. Top ${cutoff} of ${D.size} make the playoffs. Most pivotal first.</p>`);
 
   // week tabs (1..regWeeks), current week marked
   s.push(weekTabsHtml("stkWtabs", "stkWk-", "stkWeekPane", allWeeks, wk, D.week));
-  s.push(`</div>`);
+  s.push(`</div></section>`);
   // single week tabpanel: everything scoped to the selected week
   s.push(`<div id="stkWeekPane" role="tabpanel" aria-labelledby="stkWk-${wk}" tabindex="0">`);
 
   // filter control
-  s.push(`<div class="stk-filter" id="stkFilter" role="group" aria-label="Stakes view">
-      <button type="button" class="stk-seg" data-mode="seeding" aria-pressed="${STAKES_MODE==='seeding'}">Seeding</button>
-      <button type="button" class="stk-seg" data-mode="odds" aria-pressed="${STAKES_MODE==='odds'}">Playoff odds</button>
-      <button type="button" class="stk-seg" data-mode="both" aria-pressed="${STAKES_MODE==='both'}">Both</button>
+  s.push(`<div class="bs-seg" id="stkFilter" role="group" aria-label="Stakes view">
+      <button type="button" data-mode="seeding" aria-pressed="${STAKES_MODE==='seeding'}">Seeding</button>
+      <button type="button" data-mode="odds" aria-pressed="${STAKES_MODE==='odds'}">Playoff odds</button>
+      <button type="button" data-mode="both" aria-pressed="${STAKES_MODE==='both'}">Both</button>
     </div>`);
 
   // precision label per week distance
   if(isFuture){
-    s.push(`<div class="cap">Projected from today's records.</div>`);
+    s.push(`<p class="cap">Projected from today's records.</p>`);
   } else if(isPast){
-    s.push(`<div class="cap">Final results.</div>`);
+    s.push(`<p class="cap">Final results.</p>`);
   } else if((STAKES_MODE==="odds"||STAKES_MODE==="both") && !oddsEnumerable){
-    s.push(`<div class="cap">Too early for exact odds — showing best/worst-case seeds.</div>`);
+    s.push(`<p class="cap">Too early for exact odds — showing best/worst-case seeds.</p>`);
   }
 
   // standings-compression framing: explain why every game reads PIVOTAL when the field is bunched
   if(tightBands){
-    s.push(`<div class="cap">Standings are bunched within ${comp.spread} game${comp.spread===1?"":"s"} — every game is pivotal this week.</div>`);
+    s.push(`<p class="cap">Standings are bunched within ${comp.spread} game${comp.spread===1?"":"s"} — every game is pivotal this week.</p>`);
   }
 
   const wireStakesWeeks = () => {
@@ -946,86 +889,82 @@ function paintStakes(){
   };
 
   if(!rows.length){
-    s.push(`<div class="card"><div class="cap">No matchups scheduled for Week ${wk}.</div></div>`);
+    s.push(`<section class="bs-panel"><div class="bs-panel-body"><p class="cap">No matchups scheduled for Week ${wk}.</p></div></section>`);
     s.push(`</div>`); // end #stkWeekPane
     el.innerHTML = s.join(""); wireStakesWeeks(); return;
   }
 
   const pct = x => (Math.round(x*1000)/10).toFixed(1)+"%";
   const seedTxt = (seed) => seed<=cutoff ? `seed ${seed} <b>(in)</b>` : `seed ${seed} (out)`;
+  const BAND_CLS = { pivotal:"bs-down", meaningful:"bs-warn", low:"bs-dim" };
 
-  // render each matchup card
+  // one flat panel per matchup: head "A vs B" + band word; body = Team · If win · If lose table
   rows.forEach(r=>{
     const band = importanceBand(r.score, r.crosses, tightBands);
     const aName = shortOf(r.aId), bName = shortOf(r.bId);
     const parts = [];
-    // past week with a known result: show a small result badge instead of leading with an importance tag.
-    const resultBadge = (isPast && r.scored)
-      ? (r.tie ? `<span class="stk-imp low">TIE ${pts(r.homePts)}–${pts(r.awayPts)}</span>`
-               : `<span class="stk-imp meaningful">${esc(shortOf(r.winId))} won</span>`)
-      : `<span class="stk-imp ${band.key}">${band.label}</span>`;
-    parts.push(`<div class="stk-card">
-      <div class="stk-head">
-        ${resultBadge}
-        <span class="stk-mu"><span class="nm">${esc(aName)}</span><span class="vs">vs</span><span class="nm">${esc(bName)}</span></span>
-      </div>`);
+    // past week with a known result: show the result word instead of an importance band.
+    const headWord = (isPast && r.scored)
+      ? `<span class="bs-micro">${r.tie ? "TIE" : "FINAL"}</span>`
+      : `<span class="bs-micro ${BAND_CLS[band.key]||"bs-dim"}">${band.label}</span>`;
+    parts.push(`<section class="bs-panel"><div class="bs-panel-head"><h3 class="bs-h2">${esc(aName)} vs ${esc(bName)}</h3><span class="bs-meta">${headWord}</span></div>`);
 
     if(isPast && r.scored){
       // KNOWN result — retrospective. Who won, and whether it was a cut-line swing in hindsight.
       const won = r.tie ? null : shortOf(r.winId);
-      parts.push(`<div class="stk-team"><div class="stk-out">`
+      parts.push(`<div class="bs-panel-body"><p class="cap">`
         + (r.tie
-            ? `<span class="stk-chip">Ended in a tie, ${pts(r.homePts)}–${pts(r.awayPts)}.</span>`
-            : `<span class="stk-chip win"><b>${esc(won)}</b> won, ${pts(Math.max(r.homePts,r.awayPts))}–${pts(Math.min(r.homePts,r.awayPts))}</span>`)
-        + `</div></div>`);
+            ? `Ended in a tie, ${pts(r.homePts)}–${pts(r.awayPts)}.`
+            : `<span class="bs-up"><b>${esc(won)}</b> won, ${pts(Math.max(r.homePts,r.awayPts))}–${pts(Math.min(r.homePts,r.awayPts))}</span>`)
+        + `</p>`);
       if(r.crosses){
-        parts.push(`<div class="stk-note">Cut-line swing game: the result moved a team across the playoff line.</div>`);
+        parts.push(`<p class="cap">Cut-line swing game: the result moved a team across the playoff line.</p>`);
       }
-      parts.push(`</div>`);
+      parts.push(`</div></section>`);
       s.push(parts.join(""));
       return;
     }
 
     // per-team outcome rows (current or future — hypothetical win/lose)
+    parts.push(`<div class="bs-table-wrap"><table class="bs-table stk-table"><thead><tr><th scope="col">Team</th><th scope="col">If win</th><th scope="col">If lose</th></tr></thead><tbody>`);
     [[r.aId, aName, r.aWinSeed, r.aLoseSeed, r.aRec, r.odds?r.odds.a:null],
      [r.bId, bName, r.bWinSeed, r.bLoseSeed, r.bRec, r.odds?r.odds.b:null]].forEach(([id,nm,winSeed,loseSeed,rec,od])=>{
       const winRec = `${rec.w+1}-${rec.l}${rec.t?"-"+rec.t:""}`;
       const loseRec = `${rec.w}-${rec.l+1}${rec.t?"-"+rec.t:""}`;
-      const chips = [];
+      const win = [], lose = [];
       if(STAKES_MODE==="seeding" || STAKES_MODE==="both"){
-        chips.push(`<span class="stk-chip win">Win <span class="arr">→</span> <b>${winRec}</b>, ${seedTxt(winSeed)}</span>`);
-        chips.push(`<span class="stk-chip lose">Lose <span class="arr">→</span> <b>${loseRec}</b>, ${seedTxt(loseSeed)}</span>`);
+        win.push(`<span class="bs-up"><b>${winRec}</b>, ${seedTxt(winSeed)}</span>`);
+        lose.push(`<span class="bs-down"><b>${loseRec}</b>, ${seedTxt(loseSeed)}</span>`);
       }
       if(STAKES_MODE==="odds" || STAKES_MODE==="both"){
         if(od){ // exact enumerated odds (current week only)
-          chips.push(`<span class="stk-chip win">Win <span class="arr">→</span> <b>${pct(od.win)}</b> playoffs</span>`);
-          chips.push(`<span class="stk-chip lose">Lose <span class="arr">→</span> <b>${pct(od.lose)}</b> playoffs</span>`);
+          win.push(`<span class="bs-up"><b>${pct(od.win)}</b> playoffs</span>`);
+          lose.push(`<span class="bs-down"><b>${pct(od.lose)}</b> playoffs</span>`);
         } else { // not enumerable (early season / future week) → honest win-out/lose-out bounds (BOTH & odds)
           const b = boundsFor(D, id);
-          chips.push(`<span class="stk-chip">Best case: <b>seed ${b.bestSeed}</b> (win out)</span>`);
-          chips.push(`<span class="stk-chip">Worst case: <b>seed ${b.worstSeed}</b> (lose out)</span>`);
+          win.push(`<span class="bs-dim">Best case: <b>seed ${b.bestSeed}</b> (win out)</span>`);
+          lose.push(`<span class="bs-dim">Worst case: <b>seed ${b.worstSeed}</b> (lose out)</span>`);
         }
       }
-      parts.push(`<div class="stk-team">
-        <div class="stk-tname">${avatarHtml(id, nm, 20)}${esc(nm)}</div>
-        <div class="stk-out">${chips.join("")}</div>
-      </div>`);
+      parts.push(`<tr><td><span class="tm-cell">${avatarHtml(id, nm, 20)}<span>${esc(nm)}</span></span></td>`
+        + `<td class="wrap-ok">${win.join("<br>")}</td><td class="wrap-ok">${lose.join("<br>")}</td></tr>`);
     });
+    parts.push(`</tbody></table></div>`);
 
-    // per-card note
+    // per-panel note
     if(r.crosses){
-      parts.push(`<div class="stk-note">${isFuture?"Projected: this game could move a team across the playoff cut line.":"This game can move a team across the playoff cut line — it's a swing game."}</div>`);
+      parts.push(`<div class="bs-panel-body"><p class="cap">${isFuture?"Projected: this game could move a team across the playoff cut line.":"This game can move a team across the playoff cut line."}</p></div>`);
     }
-    parts.push(`</div>`);
+    parts.push(`</section>`);
     s.push(parts.join(""));
   });
 
   s.push(`</div>`); // end #stkWeekPane
   el.innerHTML = s.join("");
 
-  // wire the filter
+  // wire the filter (aria-pressed buttons; focus stays on the chosen mode after repaint)
   const f = document.getElementById("stkFilter");
-  if(f) f.querySelectorAll(".stk-seg").forEach(seg=> seg.addEventListener("click", ()=>{
+  if(f) f.querySelectorAll("button[data-mode]").forEach(seg=> seg.addEventListener("click", ()=>{
     STAKES_MODE = seg.dataset.mode; paintStakes(); writeHash();
     document.querySelector(`#stkFilter [data-mode="${STAKES_MODE}"]`)?.focus();
   }));
@@ -1127,111 +1066,73 @@ function spotRaceData(D){
 }
 
 // definitions moved out of the always-on closing paragraph into a collapsed disclosure
-const RACES_HOWTO = `<details class="bs-details" style="margin-top:8px"><summary>How races work</summary>
-  <div class="cap" style="margin:6px 0 0">Magic number: wins that guarantee a spot. Elimination number: losses that end the chase.
-  The seed range appears once it narrows. Points-for breaks ties.</div></details>`;
+const RACES_HOWTO = `<details class="bs-details"><summary>How races work</summary>
+  <p class="cap">Magic number: wins that guarantee a spot. Elimination number: losses that end the chase.
+  The seed range appears once it narrows. Points-for breaks ties.</p></details>`;
 
 function paintPlayoffs(){
   const D = DATA; const el = document.getElementById("pane-playoffs");
   if(!D){ el.innerHTML = `<div class="note">No data.</div>`; return; }
-  const st = standings(D);
   const played = Math.max(0, D.week-1);
   const gamesLeft = Math.max(0, D.regWeeks - played);
   const cutoff = D.playoffTeams;
   const s = [];
 
-  // header / context
-  s.push(`<div class="card"><h2>Playoff Picture</h2>
-    <div class="cap">Top <b>${cutoff}</b> of ${D.size} make the playoffs · ${D.regWeeks}-week regular season · ~${gamesLeft} game(s) left (playoffs start Week ${D.playoffStart}).</div>`);
+  // header / context (the standings table itself lives on League Insights: one table, no duplicate)
+  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Playoff Picture</h2></div><div class="bs-panel-body">
+    <p class="cap">Top <b>${cutoff}</b> of ${D.size} make the playoffs · ${D.regWeeks}-week regular season · ~${gamesLeft} game(s) left (playoffs start Week ${D.playoffStart}).</p>`);
   if(gamesLeft >= D.regWeeks-1){
-    s.push(`<div class="cap">Early season: ranges still span the league.</div>`);
+    s.push(`<p class="cap">Early season: ranges still span the league.</p>`);
   }
-  s.push(`</div>`);
-
-  // clinch/elim/alive — simple, honest bounds:
-  // best case = win all remaining; worst = lose all. Compare against the current cutoff line.
-  const maxW = t => t.w + gamesLeft;   // if they win out
-  const cutoffTeam = st[cutoff-1];
-  const firstOutW = st[cutoff] ? st[cutoff].w : 0;   // team just outside
-  const lastInMaxIfLose = st[cutoff-1] ? st[cutoff-1].w : 0;
-
-  s.push(`<div class="card"><h2>Standings & Status</h2><div class="cap">W-L, points-for tiebreaker. Status uses win-out / lose-out bounds (early-season honest bounds, not a projection).</div><div class="rows">`);
-  st.forEach((t,i)=>{
-    const inLine = i < cutoff;
-    // ALIVE by default early; only mark clinched/eliminated when math is certain
-    let status="alive", label="ALIVE", why="";
-    if(gamesLeft===0){
-      status = inLine ? "clinch" : "elim"; label = inLine ? "IN" : "OUT";
-    } else {
-      // eliminated if even winning out can't catch the current cutoff team's floor (lose-out)... too strict early -> keep ALIVE
-      const bestFinish = t.w + gamesLeft;
-      const cutoffFloor = (st[cutoff-1]?.w)||0; // current #cutoff wins (won't decrease)
-      if(bestFinish < cutoffFloor && i>=cutoff){ status="elim"; label="OUT"; why="can't catch the cut line even winning out"; }
-      // clinched if worst finish still beats the best possible of the first team out
-      const worstFinish = t.w;
-      const chaserCeil = (st[cutoff]?.w||0) + gamesLeft;
-      if(i<cutoff && worstFinish > chaserCeil){ status="clinch"; label="IN"; why="can't be caught even losing out"; }
-    }
-    const seedNote = inLine ? `seed ${i+1} (in)` : `seed ${i+1} (out by ${((st[cutoff-1]?.w||0) - t.w) || "tiebreak"})`;
-    s.push(`<div class="row">
-      <span class="rk">${i+1}</span>
-      <span class="nm">${esc(t.name)}<span class="sub2">${t.w}-${t.l}${t.t?"-"+t.t:""} · ${pts(t.pf)} pf</span></span>
-      <span class="val"><span class="pill ${status}">${label}</span></span>
-    </div>${why?`<div class="pline" style="padding:0 6px 6px 42px">${esc(t.name)} ${why}.</div>`:``}`);
-  });
-  s.push(`</div></div>`);
+  s.push(`<p class="cap">Full standings: <a href="#insights">League Insights</a></p></div></section>`);
 
   // ===== RACE 1: #1 seed / first-round bye =====
   const shortOf = id => D.byId[id]?.short || "—";
   const sr = seedRaceData(D);
-  s.push(`<div class="card"><h2>#1 Seed / First-Round Bye Race</h2>
-    <div class="cap">The #1 seed earns a first-round bye. Contenders are teams that can still finish first if they win out; games-back is from the current leader (${esc(shortOf(sr.leader.id))}, ${sr.leader.w}-${sr.leader.l}).</div>`);
+  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">#1 Seed / First-Round Bye Race</h2></div><div class="bs-panel-body">
+    <p class="cap">The #1 seed earns a first-round bye. Games back are from the leader (${esc(shortOf(sr.leader.id))}, ${sr.leader.w}-${sr.leader.l}).</p>`);
   if(sr.gamesLeft===0){
-    s.push(`<div class="cap">Regular season is over — ${esc(shortOf(sr.leader.id))} is the #1 seed.</div>`);
+    s.push(`<p class="cap">Regular season is over — ${esc(shortOf(sr.leader.id))} is the #1 seed.</p>`);
   } else if(sr.contenders.length<=1){
-    s.push(`<div class="cap">${sr.clinchedId ? `${esc(shortOf(sr.clinchedId))} has CLINCHED the #1 seed (can't be caught even losing out).` : `Only ${esc(shortOf(sr.leader.id))} can reach the top seed right now.`}</div>`);
+    s.push(`<p class="cap">${sr.clinchedId ? `${esc(shortOf(sr.clinchedId))} has CLINCHED the #1 seed (can't be caught even losing out).` : `Only ${esc(shortOf(sr.leader.id))} can reach the top seed right now.`}</p>`);
   }
   // flag contenders tied on games-back (same wins) so we can note PF is what separates them
   const gbCounts = {}; sr.contenders.forEach(c=> gbCounts[c.gamesBack]=(gbCounts[c.gamesBack]||0)+1);
-  s.push(`<div class="race-list">`);
+  s.push(`<div class="bs-table-wrap"><table class="bs-table"><thead><tr><th scope="col">Team</th><th class="num" scope="col">W-L</th>
+    <th class="num" scope="col">PF</th><th class="num" scope="col">GB</th><th scope="col">Status</th><th scope="col">Path</th></tr></thead><tbody>`);
   sr.contenders.forEach(c=>{
     const tiedOnGB = gbCounts[c.gamesBack] > 1;
     const need = c.isLeader
       ? (c.clinched ? "Locked in — can't be caught for #1." : "Win out and the top seed is theirs.")
       : `Needs to win out (ceiling ${c.ceiling}) + ${esc(shortOf(sr.leader.id))} to slip.`
         + (tiedOnGB ? ` · ${pts(c.pf)} pf breaks the tie` : "");
-    const tag = c.clinched ? `<span class="race-pill clinch">CLINCHED #1</span>`
-              : c.isLeader ? `<span class="race-pill lead">LEADER</span>`
-              : `<span class="race-pill chase">${c.gamesBack} GB</span>`;
-    s.push(`<div class="race-row">
-      <div class="race-team">${avatarHtml(c.id, shortOf(c.id), 22)}<span class="race-nm">${esc(shortOf(c.id))}</span>
-        <span class="race-rec">${c.w}-${c.l} · ${pts(c.pf)} pf</span></div>
-      <div class="race-tag">${tag}</div>
-      <div class="race-need">${need}</div>
-    </div>`);
+    const tag = c.clinched ? `<span class="bs-up">CLINCHED #1</span>`
+              : c.isLeader ? `<span class="bs-up">LEADER</span>`
+              : `<span class="bs-dim">${c.gamesBack} GB</span>`;
+    s.push(`<tr${c.seed===1?' class="seed1"':""}>
+      <td><span class="tm-cell">${avatarHtml(c.id, shortOf(c.id), 22)}<span>${esc(shortOf(c.id))}</span></span></td>
+      <td class="num">${c.w}-${c.l}</td><td class="num">${pts(c.pf)}</td><td class="num">${c.isLeader?"—":c.gamesBack}</td>
+      <td>${tag}</td><td class="wrap-ok">${need}</td></tr>`);
   });
-  s.push(`</div></div>`);
+  s.push(`</tbody></table></div></div></section>`);
 
   // ===== RACE 2: general playoff-spot race =====
   const spr = spotRaceData(D);
   const BAND = {
-    in:      {label:"IN",      cls:"clinch"},
-    bubble:  {label:"BUBBLE",  cls:"alive"},
-    chasing: {label:"CHASING", cls:"chase"},
-    out:     {label:"OUT",     cls:"elim"},
+    in:      {label:"IN",      cls:"bs-up"},
+    bubble:  {label:"BUBBLE",  cls:"bs-warn"},
+    chasing: {label:"CHASING", cls:"bs-dim"},
+    out:     {label:"OUT",     cls:"bs-down"},
   };
-  s.push(`<div class="card"><h2>Playoff-Spot Race</h2>
-    <div class="cap">Top <b>${spr.cutoff}</b> make it, ordered by current standing (W, then points-for). <b>IN</b> = holding a spot with a cushion · <b>BUBBLE</b> = within a game of the cut line · <b>CHASING</b> = below the line but alive · <b>OUT</b> = can't get in even winning out. The gap shown is games from the cut line by today's record (${spr.cutTeam?`${esc(shortOf(spr.cutTeam.id))} holds the last spot at ${spr.cutW} W`:"—"}); points-for breaks ties.</div>`);
+  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Playoff-Spot Race</h2></div><div class="bs-panel-body">
+    <p class="cap">Top <b>${spr.cutoff}</b> make it, ordered by W then points-for. IN: holding a spot. BUBBLE: around the cut line. CHASING: below the line, alive. OUT: can't get in even winning out. ${spr.cutTeam?`${esc(shortOf(spr.cutTeam.id))} holds the last spot at ${spr.cutW} W.`:""}</p>`);
   if(spr.gamesLeft>=D.regWeeks-1){
-    s.push(`<div class="cap">Early season: ranges still span the league.</div>`);
+    s.push(`<p class="cap">Early season: ranges still span the league.</p>`);
   }
-  s.push(`<div class="race-list">`);
+  s.push(`<div class="bs-table-wrap"><table class="bs-table"><thead><tr><th class="num" scope="col">Seed</th><th scope="col">Team</th>
+    <th class="num" scope="col">W-L</th><th class="num" scope="col">PF</th><th scope="col">Band</th><th scope="col">Gap</th></tr></thead><tbody>`);
   spr.rows.forEach(r=>{
     const b = BAND[r.band];
-    // cut-line divider after the last IN seed
-    if(r.seed === spr.cutoff+1){
-      s.push(`<div class="race-cut">— playoff cut line —</div>`);
-    }
     // headline signal = CURRENT gap from the cut line (+ PF tiebreak), not the non-informative wide seed range.
     let gapTxt;
     if(spr.gamesLeft===0){ gapTxt = r.inNow ? "made it" : "missed out"; }
@@ -1243,21 +1144,23 @@ function paintPlayoffs(){
       gapTxt = gb>0 ? `${gb} game${gb===1?"":"s"} back` : `level with the line`;
     }
     // PF tiebreak note when tied on wins with a neighbor (mirrors how standings(D) actually breaks it)
-    const pfTxt = r.pfTie ? ` · ${pts(r.pf)} pf breaks the tie` : ` · ${pts(r.pf)} pf`;
+    const pfTxt = r.pfTie ? ` · ${pts(r.pf)} pf breaks the tie` : "";
     // magic/elim only when certain; wide early-season bounds shown de-emphasized, not as the headline
     const extra = [];
     if(r.magic!=null) extra.push(`magic ${r.magic}`);
     if(r.elim!=null) extra.push(`elim ${r.elim}`);
     if(!r.boundsWide) extra.push(`range seed ${r.bestSeed}–${r.worstSeed}`); // only when it actually narrows
-    const extraTxt = extra.length ? ` · <span class="race-extra">${extra.join(" · ")}</span>` : "";
-    s.push(`<div class="race-row">
-      <div class="race-team"><span class="race-seed">${r.seed}</span>${avatarHtml(r.id, shortOf(r.id), 22)}<span class="race-nm">${esc(shortOf(r.id))}</span>
-        <span class="race-rec">${r.w}-${r.l}${r.t?"-"+r.t:""} · ${pts(r.pf)} pf</span></div>
-      <div class="race-tag"><span class="race-pill ${b.cls}">${b.label}</span></div>
-      <div class="race-need">${gapTxt}${pfTxt}${extraTxt}</div>
-    </div>`);
+    const extraTxt = extra.length ? ` · <b>${extra.join(" · ")}</b>` : "";
+    // cut line: dashed --down rule under the last IN seed
+    const cut = r.seed===spr.cutoff ? " bs-cut" : "";
+    s.push(`<tr>
+      <td class="num${cut}">${r.seed}</td>
+      <td class="${cut.trim()}"><span class="tm-cell">${avatarHtml(r.id, shortOf(r.id), 22)}<span>${esc(shortOf(r.id))}</span></span></td>
+      <td class="num${cut}">${r.w}-${r.l}${r.t?"-"+r.t:""}</td><td class="num${cut}">${pts(r.pf)}</td>
+      <td class="${cut.trim()}"><span class="${b.cls}">${b.label}</span></td>
+      <td class="wrap-ok${cut}">${gapTxt}${pfTxt}${extraTxt}</td></tr>`);
   });
-  s.push(`</div>${RACES_HOWTO}</div>`);
+  s.push(`</tbody></table></div>${RACES_HOWTO}</div></section>`);
 
   el.innerHTML = s.join("");
 }
@@ -1307,31 +1210,31 @@ function paintTradeBlock(){
   });
 
   const s = [];
-  s.push(`<div class="card"><h2>Trade Block — who's deep, who's thin</h2>
-    <div class="cap">Plain roster counts vs starting slots (QB, RB×2, WR×2, TE, FLEX, D/ST, K). <b>Surplus</b> = more bodies than you can start; <b>shortage</b> = at or below what you must start. Just counts — no player values, rankings, or recommendations. Auto from live rosters.</div>`);
-
-  // legend
-  s.push(`<div class="blk-legend"><span class="bpill surplus">surplus</span><span class="bpill short">shortage</span><span class="bpill ok">ok</span></div>`);
+  const CNT_CLS = { surplus:"bs-up", short:"bs-down", ok:"" };
+  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Trade Block: who's deep, who's thin</h2></div><div class="bs-panel-body">
+    <p class="cap">Roster counts vs starting slots (QB, RB×2, WR×2, TE, FLEX, D/ST, K). Surplus: more than you can start. Shortage: at or below what you must start. Counts only, from live rosters.</p>
+    <p class="cap"><span class="bs-up">Surplus</span> · <span class="bs-down">Shortage</span> · OK</p>`);
 
   // grid: team rows, position columns
-  s.push(`<div class="blk-wrap"><table class="blk"><thead><tr><th class="tmh">Team</th>`
-    + BLOCK_POS.map(p=>`<th>${BLOCK_LABEL[p]}</th>`).join("") + `</tr></thead><tbody>`);
+  s.push(`<div class="bs-table-wrap"><table class="bs-table bs-table--stick1"><thead><tr><th scope="col">Team</th>`
+    + BLOCK_POS.map(p=>`<th class="num" scope="col">${BLOCK_LABEL[p]}</th>`).join("") + `</tr></thead><tbody>`);
   rows.forEach(r=>{
-    s.push(`<tr><td class="tmh"><span class="tm-cell">${avatarHtml(r.id, r.short, 22)}<span>${esc(r.short)}</span></span></td>`
-      + r.cells.map(c=>`<td class="bc ${c.status}"><span class="bn">${c.count}</span></td>`).join("")
+    s.push(`<tr><td><span class="tm-cell">${avatarHtml(r.id, r.short, 22)}<span>${esc(r.short)}</span></span></td>`
+      + r.cells.map(c=>`<td class="num"><span class="${CNT_CLS[c.status]}">${c.count}</span></td>`).join("")
       + `</tr>`);
   });
-  s.push(`</tbody></table></div></div>`);
+  s.push(`</tbody></table></div></div></section>`);
 
   // per-team plain-English summary (needs/available at a glance) — still just counts, no analysis
-  s.push(`<div class="card"><h2>At a glance</h2><div class="ag-list">`
+  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">At a glance</h2></div>`
+    + `<div class="bs-table-wrap"><table class="bs-table"><thead><tr><th scope="col">Team</th><th scope="col">Note</th></tr></thead><tbody>`
     + rows.map(r=>{
         const need = r.shortages.length ? `thin at <b>${r.shortages.join(", ")}</b>` : "";
         const deep = r.surpluses.length ? `deep at <b>${r.surpluses.join(", ")}</b>` : "";
         const both = [deep, need].filter(Boolean).join(" · ") || "balanced roster counts";
-        return `<div class="ag-row">${avatarHtml(r.id, r.short, 26)}<span class="ag-nm">${esc(r.short)}</span><span class="ag-txt">${both}</span></div>`;
+        return `<tr><td><span class="tm-cell">${avatarHtml(r.id, r.short, 22)}<span>${esc(r.short)}</span></span></td><td class="wrap-ok">${both}</td></tr>`;
       }).join("")
-    + `</div></div>`);
+    + `</tbody></table></div></section>`);
 
   el.innerHTML = s.join("");
 }
@@ -1367,6 +1270,17 @@ async function load(){
     status.textContent="ESPN · couldn't update";
   }
 }
+
+/* ---- theme toggle: System -> Light -> Dark (shared snippet, identical across the three apps) ---- */
+// theme-color metas follow the OS via media=; a manual choice overrides both so the browser chrome matches (review N7).
+const TC_META=[...document.querySelectorAll('meta[name="theme-color"]')], TC_ORIG=TC_META.map(x=>x.content), TC_BG={light:"#F5F6F8",dark:"#0E1116"};
+function applyTheme(m){ const r=document.documentElement; if(m==="light"||m==="dark") r.setAttribute("data-theme",m); else r.removeAttribute("data-theme");
+  TC_META.forEach((x,i)=>{ x.content = TC_BG[m] || TC_ORIG[i]; });
+  try{ m==="system"?localStorage.removeItem("bs-theme"):localStorage.setItem("bs-theme",m); }catch(e){}
+  const b=document.getElementById("themeBtn"); if(b){ b.textContent="Theme: "+m[0].toUpperCase()+m.slice(1); b.setAttribute("aria-label","Color theme: "+m+". Activate to change."); } }
+function currentTheme(){ return document.documentElement.getAttribute("data-theme")||"system"; }
+document.getElementById("themeBtn").addEventListener("click",()=>{ const o=["system","light","dark"]; applyTheme(o[(o.indexOf(currentTheme())+1)%3]); });
+applyTheme(currentTheme());
 
 /* ---- tabs (WAI-ARIA tabs pattern, roving tabindex; shared snippet, identical across the three apps) ---- */
 // tablist: element with role="tablist"; onSelect(key) paints + writes the hash. Buttons carry data-key.

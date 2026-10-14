@@ -1,0 +1,175 @@
+/* =============================================================================
+   Box Score family.css  v1.0.3  (2026-10-13)
+   v1.0.3: .bs-sort gets its own :focus-visible ring (all:unset removed it; review r3 M1);
+           dark --pos-def #7D8796 -> #808A99 for >=4.5:1 on --surface-2 (review r3 N4, 4th deviation below).
+   v1.0.2: .bs-tag + .bs-seg button snapped to the 4px grid (review r2 N8).
+   v1.0.1: accent-text owned by the theme switch (apps set 3 inputs), .bs-table-wrap--tall for sticky headers,
+           stick1 corner z-index, complete .bs-sr, documented deviations + exceptions. v1.0.0: initial.
+   Shared tokens + base components for: Busch Apple tool, fantasy-dashboard, Royal Crushers Hub.
+   CANONICAL COPY lives in fantasy_football_project/.agents/tasks/dashboards-redesign-20261012/.
+   Each repo COPIES this file to assets/family.css (never hot-link across Vercel apps).
+   Bump the version header on any change and re-copy to all three repos in the same pass.
+
+   LOAD ORDER in each index.html <head>:
+     1. theme bootstrap <script> (sets html[data-theme] from localStorage "bs-theme")
+     2. Google Fonts preconnect + stylesheet (Barlow Condensed 600;700 + IBM Plex Sans 400;600, display=swap)
+     3. <link rel="stylesheet" href="assets/family.css?v=1.0.3">
+     4. the app's ACCENT OVERRIDE line (below), then the app's own <style>
+
+   PER-APP ACCENT OVERRIDE: exactly ONE line at the top of the app's <style>. Never set --accent-text directly;
+   family.css picks --accent-text-dark or --accent-text-light per theme, so nothing leaks between themes.
+     :root{--accent:#3E8EDE;--accent-text-dark:#5AA2E8;--accent-text-light:#1F6FBF}                       Dashboard
+     :root{--accent:#D0503C;--accent-text-dark:#E8705E;--accent-text-light:#A93A28}                       Busch Apple
+     :root{--accent:#7A4FB5;--accent-text-dark:#A585D6;--accent-text-light:#5E3796;--brand-gold:#D4AF37} Royal Crushers
+   --accent is for fills/underlines/bars (>=3:1 non-text). --accent-text is for text/links (>=4.5:1 on --surface).
+   (The app <style> loads after family.css with equal :root specificity, so the app's inputs win; the light blocks
+   below only re-point --accent-text, they never redefine the three inputs.)
+
+   DEVIATIONS from audit section 2 tokens, all for >=4.5:1 text contrast on --surface:
+     dark --down #EF5A5F (audit #E5484D = 4.45:1) · light --up #187A4F (audit #1E8A5A = 4.3:1) ·
+     light --warn #94600F (audit #B7791F = 3.6:1) · light --pos-* set added (audit defined dark only) ·
+     dark --pos-def #808A99 (v1.0.2 #7D8796 = 4.40:1 on --surface-2; now 5.00 on --surface / 4.58 on --surface-2).
+
+   TYPE SCALE: 11/12/13-14/15/16/20-24/28 px, integer only, nothing under 11px. One exception: brand wordmarks
+   (the Hub banner title) may use 28px, or 40px at >=720px. Nothing else exceeds 28px.
+
+   SHADOWS: none. The only box-shadow in this family is `inset` used to draw a flat 3px bar or 2px underline;
+   no drop/elevation shadows (grep gate in every app: a box-shadow whose value is not `inset ...` = 0 hits).
+
+   STICKY HEADERS: a header sticks only inside a wrapper that itself scrolls vertically. Wrap long tables in
+   `.bs-table-wrap.bs-table-wrap--tall`; short tables use plain `.bs-table-wrap` and accept a non-sticky header.
+
+   THEME: no stored choice -> follow prefers-color-scheme (dark when no preference).
+   html[data-theme="light"|"dark"] (manual toggle, localStorage "bs-theme") overrides the system.
+   ============================================================================= */
+
+:root{
+  color-scheme:dark;
+  --bg:#0E1116; --surface:#151A21; --surface-2:#1C222B; --border:#2A313C;
+  --text:#E6E9EE; --text-2:#9AA4B2;
+  --up:#2FB67C; --down:#EF5A5F; --warn:#E2A336;
+  --accent:#3E8EDE; --accent-text-dark:#5AA2E8; --accent-text-light:#1F6FBF; --brand-gold:#D4AF37;
+  --accent-text:var(--accent-text-dark);
+  --pos-qb:#E5636B; --pos-rb:#3FB68B; --pos-wr:#4B9BE8; --pos-te:#E89B3C; --pos-k:#8C95A3;
+  --pos-def:#808A99; --pos-dl:#D47FA6; --pos-lb:#5FB8CF; --pos-db:#B5C26A;
+  --font-display:"Barlow Condensed","Arial Narrow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --fs-micro:11px; --fs-meta:12px; --fs-table:13px; --fs-body:15px; --fs-card:16px; --fs-page:20px; --fs-score:28px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+  --r-chip:4px; --r-panel:6px;
+  --row-h:40px; --head-h:28px; --bar-h:48px;
+}
+@media (min-width:720px){ :root{ --fs-table:14px; --fs-page:24px; --row-h:36px; } }
+
+/* light tokens: identical values in both blocks (manual choice + system preference) */
+:root[data-theme="light"]{
+  color-scheme:light; --accent-text:var(--accent-text-light);
+  --bg:#F5F6F8; --surface:#FFFFFF; --surface-2:#EEF0F3; --border:#DCE0E5;
+  --text:#111418; --text-2:#535C68;
+  --up:#187A4F; --down:#C9363B; --warn:#94600F;
+  --pos-qb:#C23B44; --pos-rb:#187A4F; --pos-wr:#1F6FBF; --pos-te:#98560A; --pos-k:#5E6673;
+  --pos-def:#5A6270; --pos-dl:#A8467A; --pos-lb:#17707F; --pos-db:#5F6D18;
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"]){
+    color-scheme:light; --accent-text:var(--accent-text-light);
+    --bg:#F5F6F8; --surface:#FFFFFF; --surface-2:#EEF0F3; --border:#DCE0E5;
+    --text:#111418; --text-2:#535C68;
+    --up:#187A4F; --down:#C9363B; --warn:#94600F;
+    --pos-qb:#C23B44; --pos-rb:#187A4F; --pos-wr:#1F6FBF; --pos-te:#98560A; --pos-k:#5E6673;
+    --pos-def:#5A6270; --pos-dl:#A8467A; --pos-lb:#17707F; --pos-db:#5F6D18;
+  }
+}
+
+/* ---- base ---- */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:400 var(--fs-body)/1.45 var(--font-body);
+  -webkit-font-smoothing:antialiased}
+a{color:var(--accent-text)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num,td.num,th.num{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.bs-micro{font:600 var(--fs-micro)/1.2 var(--font-display);text-transform:uppercase;letter-spacing:.06em;color:var(--text-2)}
+.bs-meta{font-size:var(--fs-meta);color:var(--text-2)}
+.bs-h1{font:600 var(--fs-page)/1.1 var(--font-display);margin:0}
+.bs-h2{font:600 var(--fs-card)/1.2 var(--font-display);margin:0;letter-spacing:.02em}
+.bs-score{font:700 var(--fs-score)/1 var(--font-display);font-variant-numeric:tabular-nums}
+.bs-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---- app bar (left-aligned, 48px) ---- */
+.bs-appbar{display:flex;align-items:center;gap:var(--sp-3);min-height:var(--bar-h);padding:0 var(--sp-4);
+  background:var(--surface);border-bottom:1px solid var(--border)}
+.bs-wordmark{font:600 20px/1 var(--font-display);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.bs-appbar .bs-fresh{margin-left:auto;font-size:var(--fs-meta);color:var(--text-2);white-space:nowrap}
+
+/* ---- underline tabs: <div role="tablist" class="bs-tabs"><button role="tab" aria-selected> ---- */
+.bs-tabs{display:flex;gap:var(--sp-1);overflow-x:auto;scroll-snap-type:x proximity;scrollbar-width:none;
+  border-bottom:1px solid var(--border);-webkit-overflow-scrolling:touch}
+.bs-tabs::-webkit-scrollbar{display:none}
+.bs-tabs [role="tab"]{flex:0 0 auto;scroll-snap-align:start;min-height:40px;padding:0 var(--sp-3);background:none;border:0;
+  border-bottom:2px solid transparent;margin-bottom:-1px;cursor:pointer;color:var(--text-2);
+  font:600 14px/1 var(--font-display);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.bs-tabs [role="tab"]:hover{color:var(--text)}
+.bs-tabs [role="tab"][aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent)}
+.bs-tabs--sub [role="tab"]{min-height:36px;font-size:13px}
+
+/* ---- panels (flat; no box-in-box, no shadow, no gradient) ---- */
+.bs-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-panel);margin:0 0 var(--sp-4)}
+.bs-panel-head{display:flex;align-items:center;gap:var(--sp-2);min-height:40px;padding:0 var(--sp-3);border-bottom:1px solid var(--border)}
+.bs-panel-head .bs-meta{margin-left:auto}
+.bs-panel-body{padding:var(--sp-3)}
+.bs-panel-body--flush{padding:0}
+
+/* ---- tables (primary component) ---- */
+.bs-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+/* overflow-x:auto makes the wrapper the sticky scroller; only a height-capped wrapper lets th stick. */
+.bs-table-wrap--tall{max-height:min(70vh,640px);overflow:auto}
+table.bs-table{width:100%;border-collapse:collapse;font-size:var(--fs-table);font-variant-numeric:tabular-nums}
+.bs-table th{position:sticky;top:0;z-index:1;height:var(--head-h);padding:0 var(--sp-2);background:var(--surface);
+  border-bottom:1px solid var(--border);text-align:left;white-space:nowrap;
+  font:600 var(--fs-micro)/1 var(--font-display);text-transform:uppercase;letter-spacing:.06em;color:var(--text-2)}
+.bs-table td{height:var(--row-h);padding:0 var(--sp-2);border-bottom:1px solid var(--border);vertical-align:middle}
+.bs-table tbody tr:last-child td{border-bottom:0}
+.bs-table tbody tr:hover td{background:var(--surface-2)}
+.bs-table th.num,.bs-table td.num{text-align:right}
+.bs-table th button.bs-sort{all:unset;cursor:pointer}
+.bs-table th button.bs-sort:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.bs-table th[aria-sort="ascending"] .bs-sort::after{content:" \25B2"}
+.bs-table th[aria-sort="descending"] .bs-sort::after{content:" \25BC"}
+.bs-table tr.is-me td{background:var(--surface-2)}
+.bs-table tr.is-me td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.bs-table--stick1 th:first-child,.bs-table--stick1 td:first-child{position:sticky;left:0;z-index:2;background:var(--surface)}
+.bs-table--stick1 thead th:first-child{z-index:3}
+.bs-table--stick1 tr.is-me td:first-child,.bs-table--stick1 tbody tr:hover td:first-child{background:var(--surface-2)}
+.bs-table td.bs-cut{border-bottom:1px dashed var(--down)}
+
+/* ---- status: plain colored words or a 4px-radius tag; never glowing pills ---- */
+.bs-up{color:var(--up)} .bs-down{color:var(--down)} .bs-warn{color:var(--warn)} .bs-dim{color:var(--text-2)}
+.bs-tag{display:inline-block;padding:0 var(--sp-2);border:1px solid var(--border);border-radius:var(--r-chip);
+  font:600 var(--fs-micro)/18px var(--font-display);text-transform:uppercase;letter-spacing:.06em}
+
+/* ---- controls ---- */
+.bs-btn{display:inline-flex;align-items:center;gap:var(--sp-1);min-height:36px;padding:0 var(--sp-3);cursor:pointer;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-chip);font-size:13px;font-weight:600}
+.bs-btn:hover{border-color:var(--text-2)}
+.bs-btn--primary{background:var(--text);color:var(--bg);border-color:var(--text)}
+.bs-btn[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
+.bs-select,.bs-input{min-height:36px;padding:0 var(--sp-2);background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-chip);font-size:13px}
+.bs-seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r-chip);overflow:hidden}
+.bs-seg button{min-height:36px;padding:0 var(--sp-3);background:var(--surface);border:0;border-left:1px solid var(--border);
+  cursor:pointer;font-size:13px;font-weight:600;color:var(--text-2)}
+.bs-seg button:first-child{border-left:0}
+.bs-seg button[aria-pressed="true"]{color:var(--text);background:var(--surface-2);box-shadow:inset 0 -2px 0 var(--accent)}
+details.bs-details>summary{cursor:pointer;color:var(--text-2);font-size:var(--fs-meta)}
+
+/* ---- positions: text color or a 3px left bar, never a full-tile fill ---- */
+.pos-QB{color:var(--pos-qb)} .pos-RB{color:var(--pos-rb)} .pos-WR{color:var(--pos-wr)} .pos-TE{color:var(--pos-te)}
+.pos-K{color:var(--pos-k)} .pos-DEF{color:var(--pos-def)} .pos-DL{color:var(--pos-dl)} .pos-LB{color:var(--pos-lb)} .pos-DB{color:var(--pos-db)}
+[data-posbar]{box-shadow:inset 3px 0 0 var(--bar,transparent)}
+[data-posbar="QB"]{--bar:var(--pos-qb)} [data-posbar="RB"]{--bar:var(--pos-rb)} [data-posbar="WR"]{--bar:var(--pos-wr)}
+[data-posbar="TE"]{--bar:var(--pos-te)} [data-posbar="K"]{--bar:var(--pos-k)} [data-posbar="DEF"]{--bar:var(--pos-def)}
+[data-posbar="DL"]{--bar:var(--pos-dl)} [data-posbar="LB"]{--bar:var(--pos-lb)} [data-posbar="DB"]{--bar:var(--pos-db)}
+
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}

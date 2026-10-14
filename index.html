@@ -54,6 +54,18 @@
   .stk-table td:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .stk-table td.wrap-ok{min-width:0}
   .bs-table tr.seed1 td:first-child{box-shadow:inset 3px 0 0 var(--brand-gold)}
+  /* race tables: Path/Gap is its own column on wide screens; below 520px it drops to a full-width
+     second row under each team (restores the old .race-need reflow, so nothing clips at 390px) */
+  .race-table tr.race-sub{display:none}
+  .swipe-cue{display:none}
+  @media (max-width:519px){
+    .race-table .race-path{display:none}
+    .race-table tr.race-sub{display:table-row}
+    .race-table tr.race-main td{border-bottom:0}
+    .race-table tr.race-sub td{white-space:normal;line-height:1.35;height:auto;padding:0 var(--sp-2) 8px 38px;color:var(--text-2)}
+    #mainTabs{flex-wrap:wrap}
+    .swipe-cue{display:block;flex-basis:100%;text-align:right}
+  }
   .live{color:var(--down)}
   .why{color:var(--text-2);font-size:var(--fs-micro)}
 
@@ -445,7 +457,7 @@ function paintInsights(){
   const status = standingStatus(D);
   const leaderW = sl.length ? sl[0].rec.w : 0;
   const STATUS_CLS = { clinch:"bs-up", elim:"bs-down", alive:"bs-dim" };
-  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Standings</h2><span class="bs-meta">Top ${D.playoffTeams} make the playoffs</span></div>
+  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Standings</h2><span class="bs-meta">Top ${D.playoffTeams} make the playoffs</span><span class="bs-meta swipe-cue">Swipe the table for GB, Streak and Status</span></div>
     <div class="bs-table-wrap"><table class="bs-table bs-table--stick1" id="standingsTable">
     <thead><tr><th class="num" scope="col">Rk</th><th scope="col">Team</th><th class="num" scope="col">W-L</th>
       <th class="num" scope="col" title="Points for (breaks ties)">PF</th><th class="num" scope="col" title="Points against">PA</th>
@@ -1098,8 +1110,8 @@ function paintPlayoffs(){
   }
   // flag contenders tied on games-back (same wins) so we can note PF is what separates them
   const gbCounts = {}; sr.contenders.forEach(c=> gbCounts[c.gamesBack]=(gbCounts[c.gamesBack]||0)+1);
-  s.push(`<div class="bs-table-wrap"><table class="bs-table"><thead><tr><th scope="col">Team</th><th class="num" scope="col">W-L</th>
-    <th class="num" scope="col">PF</th><th class="num" scope="col">GB</th><th scope="col">Status</th><th scope="col">Path</th></tr></thead><tbody>`);
+  s.push(`<div class="bs-table-wrap"><table class="bs-table race-table"><thead><tr><th scope="col">Team</th><th class="num" scope="col">W-L</th>
+    <th class="num" scope="col">PF</th><th class="num" scope="col">GB</th><th scope="col">Status</th><th class="race-path" scope="col">Path</th></tr></thead><tbody>`);
   sr.contenders.forEach(c=>{
     const tiedOnGB = gbCounts[c.gamesBack] > 1;
     const need = c.isLeader
@@ -1108,11 +1120,13 @@ function paintPlayoffs(){
         + (tiedOnGB ? ` · ${pts(c.pf)} pf breaks the tie` : "");
     const tag = c.clinched ? `<span class="bs-up">CLINCHED #1</span>`
               : c.isLeader ? `<span class="bs-up">LEADER</span>`
-              : `<span class="bs-dim">${c.gamesBack} GB</span>`;
-    s.push(`<tr${c.seed===1?' class="seed1"':""}>
+              : `<span class="bs-dim">—</span>`;   // games back already has its own GB column
+    const s1 = c.seed===1 ? " seed1" : "";
+    s.push(`<tr class="race-main${s1}">
       <td><span class="tm-cell">${avatarHtml(c.id, shortOf(c.id), 22)}<span>${esc(shortOf(c.id))}</span></span></td>
       <td class="num">${c.w}-${c.l}</td><td class="num">${pts(c.pf)}</td><td class="num">${c.isLeader?"—":c.gamesBack}</td>
-      <td>${tag}</td><td class="wrap-ok">${need}</td></tr>`);
+      <td>${tag}</td><td class="wrap-ok race-path">${need}</td></tr>
+      <tr class="race-sub${s1}"><td colspan="5">${need}</td></tr>`);
   });
   s.push(`</tbody></table></div></div></section>`);
 
@@ -1129,8 +1143,8 @@ function paintPlayoffs(){
   if(spr.gamesLeft>=D.regWeeks-1){
     s.push(`<p class="cap">Early season: ranges still span the league.</p>`);
   }
-  s.push(`<div class="bs-table-wrap"><table class="bs-table"><thead><tr><th class="num" scope="col">Seed</th><th scope="col">Team</th>
-    <th class="num" scope="col">W-L</th><th class="num" scope="col">PF</th><th scope="col">Band</th><th scope="col">Gap</th></tr></thead><tbody>`);
+  s.push(`<div class="bs-table-wrap"><table class="bs-table race-table"><thead><tr><th class="num" scope="col">Seed</th><th scope="col">Team</th>
+    <th class="num" scope="col">W-L</th><th class="num" scope="col">PF</th><th scope="col">Band</th><th class="race-path" scope="col">Gap</th></tr></thead><tbody>`);
   spr.rows.forEach(r=>{
     const b = BAND[r.band];
     // headline signal = CURRENT gap from the cut line (+ PF tiebreak), not the non-informative wide seed range.
@@ -1153,12 +1167,13 @@ function paintPlayoffs(){
     const extraTxt = extra.length ? ` · <b>${extra.join(" · ")}</b>` : "";
     // cut line: dashed --down rule under the last IN seed
     const cut = r.seed===spr.cutoff ? " bs-cut" : "";
-    s.push(`<tr>
+    s.push(`<tr class="race-main">
       <td class="num${cut}">${r.seed}</td>
       <td class="${cut.trim()}"><span class="tm-cell">${avatarHtml(r.id, shortOf(r.id), 22)}<span>${esc(shortOf(r.id))}</span></span></td>
       <td class="num${cut}">${r.w}-${r.l}${r.t?"-"+r.t:""}</td><td class="num${cut}">${pts(r.pf)}</td>
       <td class="${cut.trim()}"><span class="${b.cls}">${b.label}</span></td>
-      <td class="wrap-ok${cut}">${gapTxt}${pfTxt}${extraTxt}</td></tr>`);
+      <td class="wrap-ok race-path${cut}">${gapTxt}${pfTxt}${extraTxt}</td></tr>
+      <tr class="race-sub"><td colspan="5" class="${cut.trim()}">${gapTxt}${pfTxt}${extraTxt}</td></tr>`);
   });
   s.push(`</tbody></table></div>${RACES_HOWTO}</div></section>`);
 
@@ -1315,8 +1330,9 @@ function readHash(){
 function applyHashWeeks(h){
   if(!DATA) return;
   const okWk = h.wk!=null && h.wk>=1 && h.wk<=DATA.regWeeks ? h.wk : null;
-  if(h.tab==="insights") VIEW_WEEK = okWk;
-  if(h.tab==="stakes"){ STAKES_WEEK = okWk; if(h.mode) STAKES_MODE = h.mode; }
+  // only touch a week when the hash carries a valid wkN (an in-page "#insights" link must not reset a picked week)
+  if(h.tab==="insights" && okWk!=null) VIEW_WEEK = okWk;
+  if(h.tab==="stakes"){ if(okWk!=null) STAKES_WEEK = okWk; if(h.mode) STAKES_MODE = h.mode; }
 }
 function writeHash(){
   if(!DATA && !HASH_APPLIED) return;           // never wipe a pending link's week before the first load

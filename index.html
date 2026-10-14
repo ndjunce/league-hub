@@ -67,6 +67,10 @@
   /* member name: short on phones, "Name (Team)" from 720px */
   .nm-full{display:none}
   @media (min-width:720px){ .nm-short{display:none} .nm-full{display:inline} }
+  /* teams: picker row; history: a dim second line under a team name */
+  .tm-pick{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
+  .tm-pick .bs-select{max-width:100%}
+  .sub-line{display:block;font-size:var(--fs-micro);color:var(--text-2)}
 
   /* member avatars (round logo, initial fallback) */
   .mav{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;border-radius:50%;
@@ -370,7 +374,21 @@ providers.espn = (function(){
     });
     return rows;
   }
-  return { load, loadWeekRoster };
+  // One past season's final standings (History). Owners stay the proxy's hashed ids ("m" + 10 hex), the
+  // cross-season key. Throws when ESPN has no such season (the proxy answers 502 for ESPN's 404: every year before 2018).
+  async function loadSeason(year){
+    const url = `${LEAGUE.espnProxy}?league=${encodeURIComponent(LEAGUE.id)}&season=${encodeURIComponent(year)}`
+      + `&view=mTeam&view=mSettings`;
+    const d = await jraw(url);
+    if(d && d.error) throw new Error(d.message || d.error);
+    const settings = d.settings || {}, sched = settings.scheduleSettings || {};
+    const teams = (d.teams||[]).map(t=>{ const r = recOf(t); return {
+      id:t.id, name:teamName(t), owner: t.primaryOwner || (t.owners||[])[0] || null, owners:(t.owners||[]).slice(),
+      rank: t.rankCalculatedFinal||0, seed: t.playoffSeed||0, w:r.w, l:r.l, t:r.t, pf: Math.round(pf(t)*100)/100 }; });
+    if(!teams.some(t=>t.rank===1)) throw new Error("no final standings for " + year);
+    return { year:Number(year), size: settings.size || teams.length, playoffTeams: sched.playoffTeamCount || 0, teams };
+  }
+  return { load, loadWeekRoster, loadSeason };
 })();
 
 /* ---------- provider: Sleeper (stub for later — public API, no secret) ---------- */
@@ -1257,83 +1275,329 @@ function runPlayoffEngine(){
     const sig = engineSig(DATA);
     try{ ENGINE = playoffEngine(DATA); ENGINE_SIG = sig; }
     catch(e){ console.error("Playoff engine failed:", e); return; }
-    paintPlayoffs(); paintStandings();
+    paintPlayoffs(); paintStandings(); paintTeams();
     scrollToPlayoffSub();
   }, 0);
 }
 
-/* ============================ TRADE BLOCK (simple surplus/shortage counts) ============================ */
-// Factual only: rostered COUNT per position vs Royal Crushers' startable need. No values, no rankings.
-// Starting slots: QB, RB, RB, WR, WR, TE, FLEX, D/ST, K. FLEX is RB/WR/TE eligible.
-const BLOCK_POS = ["QB","RB","WR","TE","DEF","K"];
-const BLOCK_LABEL = { QB:"QB", RB:"RB", WR:"WR", TE:"TE", DEF:"D/ST", K:"K" };
-// base starting requirement per position (dedicated slots only); FLEX handled separately across RB/WR/TE
-const START_NEED = { QB:1, RB:2, WR:2, TE:1, DEF:1, K:1 };
-const FLEX_POOL = ["RB","WR","TE"]; // one FLEX slot any of these can fill
+/* ============================ TEAMS ============================ */
+// One team at a time (proposal 4): record, team strength and both playoff odds, the roster (Starters / Bench / IR)
+// with ESPN's season numbers and ESPN's projection for this week (labeled as ESPN's), the depth counts that used to
+// be their own surplus/shortage tab (retired; IR players now left out), and the full schedule. ESPN league data only.
 
-// classify one team's count at a position vs need. Returns {count, need, status:'short'|'surplus'|'ok'}
-// Consistent rule: SURPLUS when rostered is well above what you can start (startable + 1);
-// SHORTAGE when at/below what you must start. K/D-ST (single slot, no depth expectation) = 1 is fine.
-function blockStatus(pos, count){
+// Depth counts: rostered players per position vs the starting slots QB, RB x2, WR x2, TE, FLEX (RB/WR/TE), D/ST, K.
+// Counts only: no values, no rankings.
+const DEPTH_POS = ["QB","RB","WR","TE","DEF","K"];
+const START_NEED = { QB:1, RB:2, WR:2, TE:1, DEF:1, K:1 };   // dedicated slots; the one FLEX is handled across RB/WR/TE
+const FLEX_POOL = ["RB","WR","TE"];
+const DEPTH_TXT = { surplus:{label:"Surplus",cls:"bs-up"}, short:{label:"Short",cls:"bs-down"}, ok:{label:"OK",cls:""} };
+// SURPLUS = more than you can start (startable + 1); SHORT = at or below what you must start.
+// K and D/ST (one slot, no depth expected): short only at 0, surplus at 3+.
+function depthStatus(pos, count){
   const need = START_NEED[pos] || 0;
   const flexEligible = FLEX_POOL.includes(pos);
-  // K + D/ST: carrying 1 is normal → short only at 0, surplus at 3+ (hoarding).
-  if(!flexEligible && (pos==="K" || pos==="DEF")){
+  if(pos==="K" || pos==="DEF"){
     if(count === 0) return { count, need, status:"short" };
     if(count >= 3)  return { count, need, status:"surplus" };
     return { count, need, status:"ok" };
   }
-  // "startable" = dedicated starting slots + (a share of the 1 FLEX for flex-eligible positions).
-  const startable = need + (flexEligible ? 1 : 0);
-  // SURPLUS = clearly more than you can start (one past startable). TE: need1+flex1=2 → 3+ = surplus. RB/WR: 4+.
+  const startable = need + (flexEligible ? 1 : 0);   // TE: 1 + FLEX = 2 -> 3+ surplus; RB/WR: 4+; QB: 2+
   if(count >= startable + 1) return { count, need, status:"surplus" };
-  // SHORTAGE = at/below what you must start (no depth). QB1 → 1 flagged thin; TE1 → 1 thin; RB2 → ≤2 thin.
   if(count <= need) return { count, need, status:"short" };
   return { count, need, status:"ok" };
 }
+// rostered count per position with IR players EXCLUDED (the retired surplus/shortage tab counted t.players, IR included)
+function depthCounts(t){
+  const cnt = {}; DEPTH_POS.forEach(p=>cnt[p]=0);
+  t.players.forEach(p=>{ if(!p.onIR && cnt[p.pos]!=null) cnt[p.pos]++; });
+  return DEPTH_POS.map(p=>({ pos:p, ...depthStatus(p, cnt[p]) }));
+}
 
-function paintTradeBlock(){
-  const D = DATA; const el = document.getElementById("pane-block");
+const SLOT_ORDER = [0,1,2,3,4,5,6,7,23,16,17];   // lineup order: QB, RB, WR, TE, FLEX, D/ST, K
+const slotRank = id => { const i = SLOT_ORDER.indexOf(id); return i<0 ? 99 : i; };
+const posRank = p => { const i = POS_ORDER.indexOf(p); return i<0 ? 99 : i; };
+
+// the team on screen: #teams/<id> when it is a real team, else the current #1 seed
+function teamPicked(D){
+  if(TEAM_SEL!=null && D.byId[TEAM_SEL]) return TEAM_SEL;
+  const st = standings(D); return st.length ? st[0].id : null;
+}
+
+function paintTeams(){
+  const D = DATA; const el = document.getElementById("pane-teams");
   if(!D){ el.innerHTML = `<div class="note">No data.</div>`; return; }
-
-  // count rostered players per position per team (plain counts, no weighting)
-  const rows = D.teams.slice().sort((a,b)=> (b.record.w-a.record.w)||(b.pf-a.pf)).map(t=>{
-    const cnt = {}; BLOCK_POS.forEach(p=>cnt[p]=0);
-    t.players.forEach(p=>{ if(cnt[p.pos]!=null) cnt[p.pos]++; });
-    const cells = BLOCK_POS.map(p=>({ pos:p, ...blockStatus(p, cnt[p]) }));
-    return { id:t.id, disp:t.disp, short:t.short, cells,
-             shortages: cells.filter(c=>c.status==="short").map(c=>BLOCK_LABEL[c.pos]),
-             surpluses: cells.filter(c=>c.status==="surplus").map(c=>BLOCK_LABEL[c.pos]) };
-  });
-
+  const id = teamPicked(D);
+  if(id==null){ el.innerHTML = `<div class="note">No teams.</div>`; return; }
+  const t = D.byId[id];
+  const E = (ENGINE && ENGINE.week===D.week) ? ENGINE : null, mc = E ? E.mc : null;
+  const st = standings(D), seed = st.findIndex(r=>r.id===id) + 1;
+  const B = D.byes || 0, wk = D.week;
+  const sh = k => D.byId[k]?.short || "—";
+  const dash = `<span class="bs-dim">—</span>`;
+  const refocus = document.activeElement && document.activeElement.id==="tmPick";
+  const projOn = wk <= D.regWeeks + (D.playoffRounds||0);   // ESPN only projects weeks that are still to come
+  const bd = E ? E.bd.byId[id] : null, c = E ? E.cm[id] : null, x = E ? E.str[id] : null, so = E ? E.sos[id] : null;
+  const m = mc ? mc.teams[id] : null;
+  const espn = t.espnPlayoffPct!=null ? Math.round(t.espnPlayoffPct*100)+"%" : "—";
   const s = [];
-  const CNT_CLS = { surplus:"bs-up", short:"bs-down", ok:"" };
-  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Trade Block: who's deep, who's thin</h2></div><div class="bs-panel-body">
-    <p class="cap">Roster counts vs starting slots (QB, RB×2, WR×2, TE, FLEX, D/ST, K). Surplus: more than you can start. Shortage: at or below what you must start. Counts only, from live rosters.</p>
-    <p class="cap"><span class="bs-up">Surplus</span> · <span class="bs-down">Shortage</span> · OK</p>`);
 
-  // grid: team rows, position columns
-  s.push(`<div class="bs-table-wrap"><table class="bs-table bs-table--stick1"><thead><tr><th scope="col">Team</th>`
-    + BLOCK_POS.map(p=>`<th class="num" scope="col">${BLOCK_LABEL[p]}</th>`).join("") + `</tr></thead><tbody>`);
-  rows.forEach(r=>{
-    s.push(`<tr><td><span class="tm-cell">${avatarHtml(r.id, r.short, 22)}<span>${esc(r.short)}</span></span></td>`
-      + r.cells.map(c=>`<td class="num"><span class="${CNT_CLS[c.status]}">${c.count}</span></td>`).join("")
-      + `</tr>`);
-  });
-  s.push(`</tbody></table></div></div></section>`);
+  // ---- picker ----
+  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Teams</h2><span class="bs-meta">Pick a team</span></div>`
+    + `<div class="bs-panel-body tm-pick"><label for="tmPick" class="bs-micro">Team</label><select id="tmPick" class="bs-select">`
+    + st.map(r=>`<option value="${r.id}"${r.id===id?" selected":""}>${r.seed}. ${esc(D.byId[r.id].disp)}</option>`).join("")
+    + `</select></div></section>`);
 
-  // per-team plain-English summary (needs/available at a glance) — still just counts, no analysis
-  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">At a glance</h2></div>`
-    + `<div class="bs-table-wrap"><table class="bs-table"><thead><tr><th scope="col">Team</th><th scope="col">Note</th></tr></thead><tbody>`
-    + rows.map(r=>{
-        const need = r.shortages.length ? `thin at <b>${r.shortages.join(", ")}</b>` : "";
-        const deep = r.surpluses.length ? `deep at <b>${r.surpluses.join(", ")}</b>` : "";
-        const both = [deep, need].filter(Boolean).join(" · ") || "balanced roster counts";
-        return `<tr><td><span class="tm-cell">${avatarHtml(r.id, r.short, 22)}<span>${esc(r.short)}</span></span></td><td class="wrap-ok">${both}</td></tr>`;
-      }).join("")
-    + `</tbody></table></div></section>`);
+  // ---- overview: record, strength, both odds ----
+  const kv = (k, v) => `<tr><td><span class="bs-micro">${k}</span></td><td class="wrap-ok">${v}</td></tr>`;
+  const pending = !E ? "Working out the odds…" : !mc ? (wk < 3 ? "Hub odds start in Week 3, once there are two weeks of scores." : "") : "";
+  const co = !c ? "" : c.clinchedIn ? "Clinched a playoff spot" : c.eliminated ? "Eliminated"
+    : [c.magic!=null ? `Magic number ${c.magic} (wins that clinch a spot no matter what)` : null,
+       c.elimNum!=null ? `Elimination number ${c.elimNum} (losses that end it no matter what)` : null].filter(Boolean).join(" · ") || "Neither yet";
+  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2"><span class="tm-cell">${avatarHtml(id, t.short, 24)}<span>${esc(t.short)}</span></span></h2>`
+    + `<span class="bs-meta">${esc(t.name)}</span></div>`
+    + `<div class="bs-table-wrap"><table class="bs-table"><thead><tr><th scope="col">Team</th><th scope="col">${recStr(t.record)} · seed ${seed} of ${D.size}</th></tr></thead><tbody>`
+    + kv("Status", bd ? `${badgeHtml(bd)} <span class="bs-dim">Line ${esc(bd.line)}</span>` : dash)
+    + kv("Points", `PF ${pts(t.pf)} · PA ${pts(t.pa)}${x && x.n ? ` · ${pts(x.pfg)} a game` : ""}`)
+    + kv("All-play", x && x.n ? `${fmtW(x.allplayW)}-${fmtW(x.allplayL)} · luck ${signed1(x.luck)} wins` : dash)
+    + kv("Last 3", x && x.last3!=null ? `${pts(x.last3)} a game` : dash)
+    + kv("Playoff odds", `Hub ${m ? oddsTxt(m.pIn, c) : "—"} · ESPN ${espn}`)
+    + (B ? kv("Bye (Hub)", m ? (c.clinchedBye ? "100%" : c.byeGone ? "0%" : pc(m.pBye)) : dash) : "")
+    + kv("Proj W-L (Hub)", m ? `${m.projW.toFixed(1)}-${m.projL.toFixed(1)}` : dash)
+    + kv("Clinch / out", c ? esc(co) : dash)
+    + kv("Schedule left", so && so.opp!=null ? `Opponents avg ${pts(so.opp)} a game · rank ${so.rank} of ${D.size} (1 = easiest)` : dash)
+    + kv(`ESPN proj Wk ${wk}`, projOn && t.projTeam>0 ? `${pts(t.projTeam)} (this week's starters, ESPN's projection)` : dash)
+    + `</tbody></table></div><div class="bs-panel-body">`
+    + (pending ? `<p class="cap">${pending}</p>` : "")
+    + `<p class="cap">Hub = this page's 10,000-season simulation; ESPN = ESPN's own odds. All-play: the record if this team played all ${D.size-1} others every week. Luck: actual wins minus all-play expected wins (+ = lucky).</p>`
+    + `</div></section>`);
+
+  // ---- roster: Starters / Bench / IR ----
+  const byPos = (a,b)=> (posRank(a.pos)-posRank(b.pos)) || (b.seasonPts-a.seasonPts);
+  const starters = t.starters.slice().sort((a,b)=> (slotRank(a.slotId)-slotRank(b.slotId)) || byPos(a,b));
+  const bench = t.bench.slice().sort(byPos);
+  const ir = t.players.filter(p=>p.onIR).sort(byPos);
+  const rosterTable = list => `<div class="bs-table-wrap"><table class="bs-table bs-table--stick1"><thead><tr><th scope="col">Player</th>`
+    + `<th scope="col">Slot</th><th scope="col">Pos</th>`
+    + `<th class="num" scope="col" title="Season points (ESPN scoring)">Total</th><th class="num" scope="col" title="Season points per game played (ESPN)">PPG</th>`
+    + `<th class="num" scope="col" title="Games played">GP</th><th class="num" scope="col" title="ESPN's projected points for Week ${wk}">ESPN Wk ${wk}</th></tr></thead><tbody>`
+    + list.map(p=>`<tr><td><span class="tm-cell">${playerImgHtml(p.id,p.team,p.pos,20)}<span>${esc(p.name)}${p.team ? ` <span class="bs-dim">${esc(p.team)}</span>` : ""}</span></span></td>`
+        + `<td><span class="bs-micro">${esc(p.slot)}</span></td><td><span class="pos-${esc(p.pos)}">${esc(POS_LABEL[p.pos]||p.pos)}</span></td>`
+        + `<td class="num">${pts(p.seasonPts)}</td><td class="num">${p.gp ? pts(p.seasonPPG) : "—"}</td><td class="num">${p.gp||0}</td>`
+        + `<td class="num">${projOn && p.projWk>0 ? pts(p.projWk) : "—"}</td></tr>`).join("")
+    + `</tbody></table></div>`;
+  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Roster</h2><span class="bs-meta">${t.players.length} players · ESPN scoring</span></div>`
+    + `<div class="bs-panel-body"><h3 class="bs-micro sec-label">Starters</h3></div>`
+    + (starters.length ? rosterTable(starters) : `<div class="bs-panel-body"><p class="cap">No starters set.</p></div>`)
+    + `<div class="bs-panel-body">${projOn && t.projTeam>0 ? `<p class="cap">ESPN projects these starters for ${pts(t.projTeam)} in Week ${wk} (ESPN's projection, not the Hub's).</p>` : ""}`
+    + `<h3 class="bs-micro sec-label">Bench</h3></div>`
+    + (bench.length ? rosterTable(bench) : `<div class="bs-panel-body"><p class="cap">Nobody on the bench.</p></div>`)
+    + `<div class="bs-panel-body"><h3 class="bs-micro sec-label">IR</h3>${ir.length ? "" : `<p class="cap">Nobody on IR.</p>`}</div>`
+    + (ir.length ? rosterTable(ir) : "")
+    + `<div class="bs-panel-body"><p class="cap">Total, PPG and GP are the player's season to date in this league's scoring (ESPN), including any weeks on another roster. ESPN Wk ${wk} = ESPN's projected points for this week.</p></div></section>`);
+
+  // ---- depth counts (was its own tab), IR excluded ----
+  const cells = depthCounts(t);
+  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Depth</h2><span class="bs-meta">Rostered vs starting slots · IR not counted</span></div>`
+    + `<div class="bs-table-wrap"><table class="bs-table"><thead><tr><th scope="col">Pos</th><th class="num" scope="col">Rostered</th>`
+    + `<th scope="col">Starts</th><th scope="col">Depth</th></tr></thead><tbody>`
+    + cells.map(cl=>`<tr><td><span class="pos-${cl.pos}">${POS_LABEL[cl.pos]}</span></td><td class="num">${cl.count}</td>`
+        + `<td>${cl.need}${FLEX_POOL.includes(cl.pos) ? " + FLEX" : ""}</td>`
+        + `<td><span class="${DEPTH_TXT[cl.status].cls}">${DEPTH_TXT[cl.status].label}</span></td></tr>`).join("")
+    + `</tbody></table></div><div class="bs-panel-body">`
+    + `<p class="cap">Starting slots: QB, 2 RB, 2 WR, TE, FLEX (RB/WR/TE), D/ST, K. Surplus: more than you can start. Short: at or below what you must start (K and D/ST: none rostered). Counts only, from the live roster.</p>`
+    + (ir.length ? `<p class="cap">${ir.length} player${ir.length===1?"":"s"} on IR ${ir.length===1?"is":"are"} not counted.</p>` : "")
+    + `</div></section>`);
+
+  // ---- schedule: results so far + what's left (remaining SOS, * = swing game) ----
+  const games = D.games.filter(g=>g.homeId===id || g.awayId===id).sort((a,b)=>a.period-b.period);
+  const bset = new Set(E ? D.teams.filter(z=>E.bd.byId[z.id] && E.bd.byId[z.id].key==="bubble").map(z=>z.id) : []);
+  const meBubble = bset.has(id);
+  let swingN = 0;
+  const rowsHtml = games.map(g=>{
+    const home = g.homeId===id, opp = home ? g.awayId : g.homeId;
+    const my = home ? g.homePts : g.awayPts, their = home ? g.awayPts : g.homePts;
+    const scored = (g.homePts||g.awayPts) > 0;
+    const done = scored && (g.finalized || g.period < D.week);
+    const swing = meBubble && bset.has(opp) && g.period>=D.week && g.period<=D.regWeeks;
+    if(swing) swingN++;
+    let res = dash, score = dash, note = "";
+    if(done){
+      const r = g.winner==="TIE" || my===their ? "T"
+        : (g.winner==="HOME" || g.winner==="AWAY") ? ((g.winner==="HOME")===home ? "W" : "L") : (my>their ? "W" : "L");
+      res = `<span class="${r==="W" ? "bs-up" : r==="L" ? "bs-down" : ""}">${r}</span>`;
+      score = `${pts(my)}-${pts(their)}`;
+    } else if(g.period===D.week){
+      res = g.live ? `<span class="bs-micro live">LIVE</span>` : `<span class="bs-micro">This week</span>`;
+      if(scored) score = `${pts(my)}-${pts(their)}`;
+      const op = D.byId[opp];
+      if(t.projTeam>0 && op && op.projTeam>0) note = `ESPN proj ${pts(t.projTeam)} vs ${pts(op.projTeam)}`;
+    }
+    if(!done && x && E && E.str[opp] && g.period<=D.regWeeks){
+      const of = `Opp ${pts(E.str[opp].pfg)} a game`;
+      note = note ? `${note} · ${of}` : of;
+    }
+    if(swing) note = note ? `${note} · swing game` : "swing game";
+    const wkTxt = g.period > D.regWeeks ? `${g.period} <span class="bs-dim">PO</span>` : String(g.period);
+    return `<tr><td class="num">${wkTxt}</td>`
+      + `<td><a class="tm-cell" href="#teams/${opp}">${avatarHtml(opp, sh(opp), 20)}<span>${esc(sh(opp))}${swing ? "*" : ""}</span></a></td>`
+      + `<td>${res}</td><td class="num">${score}</td><td class="wrap-ok">${esc(note)}</td></tr>`;
+  }).join("");
+  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Schedule</h2><span class="bs-meta">Weeks 1-${D.regWeeks}${games.some(g=>g.period>D.regWeeks) ? " + playoffs" : ""}</span></div>`
+    + `<div class="bs-table-wrap"><table class="bs-table"><thead><tr><th class="num" scope="col">Wk</th><th scope="col">Opponent</th>`
+    + `<th scope="col">Result</th><th class="num" scope="col">Score</th><th scope="col">Note</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`
+    + `<div class="bs-panel-body">`
+    + (so && so.opp!=null ? `<p class="cap">Remaining schedule: opponents average ${pts(so.opp)} points a game, rank ${so.rank} of ${D.size} (1 = easiest).</p>` : "")
+    + (E ? (meBubble
+        ? `<p class="cap">* = swing game: a head-to-head with another bubble team (${swingN} left).</p>`
+        : `<p class="cap">Swing games (*) are head-to-heads between two bubble teams; ${esc(t.short)} isn't on the bubble right now.</p>`) : "")
+    + `<p class="cap">Opponent names open their team page.</p></div></section>`);
 
   el.innerHTML = s.join("");
+  const pick = document.getElementById("tmPick");
+  if(pick){
+    pick.addEventListener("change", ()=>{ TEAM_SEL = Number(pick.value); paintTeams(); writeHash(); });
+    if(refocus) pick.focus();
+  }
+}
+
+/* ============================ HISTORY ============================ */
+// Champions and all-time records from 2018 to last season, from the same proxy with &season=Y (views mTeam + mSettings).
+// ESPN answers not-found for this league before 2018, so those years are left out (and the page says so).
+// Owners are grouped by the HASHED ESPN owner id (api/espn.js sanitize: the same account gives the same "m" + 10 hex
+// every season), never by team id (team ids get reused) and never by the current-season MEMBER map.
+// Past seasons never change: each one is fetched once, the first time History opens, then kept in localStorage.
+const HIST_FIRST = 2018;
+const HIST = {};   // year -> {state:"loading"|"ok"|"err", data}
+function histYears(){ const ys = []; for(let y = Number(LEAGUE.season)-1; y >= HIST_FIRST; y--) ys.push(y); return ys; }   // newest first
+const histKey = y => `rc-hist-v1-${LEAGUE.id}-${y}`;
+function histCacheGet(y){
+  try{ const d = JSON.parse(localStorage.getItem(histKey(y)) || "null");
+    return (d && d.year===y && Array.isArray(d.teams) && d.teams.length) ? d : null; }catch(e){ return null; }
+}
+function histCacheSet(y, d){ try{ localStorage.setItem(histKey(y), JSON.stringify(d)); }catch(e){} }
+// called when the History tab opens: read each season from localStorage, fetch only the missing ones
+function ensureHistory(){
+  const prov = providers[LEAGUE.provider];
+  if(!prov.loadSeason) return;
+  histYears().forEach(y=>{
+    const e = HIST[y];
+    if(e && (e.state==="ok" || e.state==="loading")) return;
+    const cached = histCacheGet(y);
+    if(cached){ HIST[y] = { state:"ok", data:cached }; return; }
+    const ne = HIST[y] = { state:"loading", data:null };
+    prov.loadSeason(y)
+      .then(d=>{ ne.state = "ok"; ne.data = d; histCacheSet(y, d); }, err=>{ ne.state = "err"; console.warn("Season "+y+":", err); })
+      .then(()=> paintHistory());
+  });
+  paintHistory();
+}
+
+function paintHistory(){
+  const el = document.getElementById("pane-history");
+  const D = DATA, years = histYears();
+  const seasons = years.filter(y=>HIST[y] && HIST[y].state==="ok").map(y=>HIST[y].data);   // newest first
+  const loadingN = years.filter(y=>HIST[y] && HIST[y].state==="loading").length;
+  const failed = years.filter(y=>HIST[y] && HIST[y].state==="err");
+  // current members by hashed owner id -> current team id (for the member's name and logo)
+  const cur = {};
+  if(D) D.teams.forEach(t=>(t.owners||[]).forEach(h=>{ cur[h] = t.id; }));
+  const curOf = tm => { if(tm.owner && cur[tm.owner]!=null) return cur[tm.owner]; const h = (tm.owners||[]).find(o=>cur[o]!=null); return h ? cur[h] : null; };
+  const keyOf = (S, tm) => tm.owner || `t${S.year}-${tm.id}`;   // primary owner's hash; an ownerless team stands alone
+  // all-time by owner (oldest season first, so the last team name seen is the most recent one)
+  const G = {};
+  seasons.slice().reverse().forEach(S=>S.teams.forEach(tm=>{
+    const k = keyOf(S, tm);
+    const o = G[k] = G[k] || { key:k, seasons:0, titles:0, second:0, playoffs:0, w:0, l:0, t:0, recentName:"", curId:null, best:null };
+    o.seasons++; o.w += tm.w; o.l += tm.l; o.t += tm.t; o.recentName = tm.name;
+    if(tm.rank===1) o.titles++;
+    if(tm.rank===2) o.second++;
+    if(S.playoffTeams && tm.seed>=1 && tm.seed<=S.playoffTeams) o.playoffs++;
+    const ci = curOf(tm); if(ci!=null) o.curId = ci;
+    if(tm.rank>=1 && (o.best==null || tm.rank<o.best)) o.best = tm.rank;
+  }));
+  const nameOf = o => (o && o.curId!=null && D && D.byId[o.curId]) ? D.byId[o.curId].short : null;
+  const teamWho = (S, tm) => {
+    const o = G[keyOf(S, tm)], nm = nameOf(o);
+    return `<span class="tm-cell">${avatarHtml(o ? o.curId : null, nm || tm.name, 20)}<span>${esc(tm.name)}<span class="sub-line">${nm ? esc(nm) : "past member"}</span></span></span>`;
+  };
+  const winPct = o => { const g = o.w + o.l + o.t; return g ? (o.w + 0.5*o.t)/g : 0; };
+  const pct3 = v => v.toFixed(3).replace(/^0/, "");
+  const s = [];
+  const range = `${HIST_FIRST}-${years[0]}`;
+
+  // ---- champions by year ----
+  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Champions</h2>`
+    + `<span class="bs-meta">${loadingN ? `Loading ${loadingN} season${loadingN===1?"":"s"}…` : range}</span></div>`
+    + `<div class="bs-table-wrap"><table class="bs-table" id="champTable"><thead><tr><th class="num" scope="col">Year</th>`
+    + `<th scope="col">Champion</th><th scope="col">Runner-up</th></tr></thead><tbody>`
+    + years.map(y=>{
+        const e = HIST[y];
+        if(!e || e.state!=="ok") return `<tr><td class="num">${y}</td><td colspan="2" class="bs-dim">${e && e.state==="err" ? "Couldn't load this season. Try again later." : "Loading…"}</td></tr>`;
+        const S = e.data, ch = S.teams.find(z=>z.rank===1), ru = S.teams.find(z=>z.rank===2);
+        return `<tr class="champ-row"><td class="num"><a href="#history/${y}">${y}</a></td>`
+          + `<td>${ch ? teamWho(S, ch) : "—"}</td><td>${ru ? teamWho(S, ru) : "—"}</td></tr>`;
+      }).join("")
+    + `</tbody></table></div><div class="bs-panel-body"><p class="cap">Final ESPN standings after the playoffs. Past member = an ESPN account that doesn't own a team this season.</p></div></section>`);
+
+  // ---- all-time by owner ----
+  const owners = Object.values(G).sort((a,b)=> (b.titles-a.titles) || (b.second-a.second) || (b.playoffs-a.playoffs) || (winPct(b)-winPct(a)) || (b.seasons-a.seasons));
+  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">All-time by owner</h2>`
+    + `<span class="bs-meta">${seasons.length} season${seasons.length===1?"":"s"}${seasons.length ? ` (${seasons[seasons.length-1].year}-${seasons[0].year})` : ""}</span></div>`);
+  if(!owners.length) s.push(`<div class="bs-panel-body"><p class="cap">${loadingN ? "Loading past seasons…" : "No past seasons loaded."}</p></div>`);
+  else s.push(`<div class="bs-table-wrap"><table class="bs-table bs-table--stick1" id="ownerTable"><thead><tr><th scope="col">Owner</th>`
+      + `<th class="num" scope="col">Titles</th><th class="num" scope="col" title="Runner-up finishes">2nd</th>`
+      + `<th class="num" scope="col" title="Seasons in the playoff field">Playoffs</th><th class="num" scope="col">Seasons</th>`
+      + `<th class="num" scope="col" title="Regular-season record">W-L</th><th class="num" scope="col" title="Regular-season win share (ties count half)">Win %</th>`
+      + `<th class="num" scope="col" title="Best final finish">Best</th></tr></thead><tbody>`
+      + owners.map(o=>{
+          const nm = nameOf(o);
+          return `<tr><td><span class="tm-cell">${avatarHtml(o.curId, nm || o.recentName, 20)}<span>${esc(nm || o.recentName)}<span class="sub-line">${nm ? esc(o.recentName) : "past member"}</span></span></span></td>`
+            + `<td class="num">${o.titles}</td><td class="num">${o.second}</td><td class="num">${o.playoffs}</td><td class="num">${o.seasons}</td>`
+            + `<td class="num">${o.w}-${o.l}${o.t ? "-"+o.t : ""}</td><td class="num">${pct3(winPct(o))}</td>`
+            + `<td class="num">${o.best!=null ? ordinal(o.best) : "—"}</td></tr>`;
+        }).join("")
+      + `</tbody></table></div>`
+      + `<div class="bs-panel-body"><p class="cap">Grouped by ESPN owner account (only a one-way hash of it reaches this page), so records follow the person through team renames and team-slot changes. A co-managed team counts for its primary owner. Under the name: the most recent team name. Playoffs = seeded into that season's playoff field.</p></div>`);
+  s.push(`</section>`);
+
+  // ---- one season (year tabs; #history/<year> deep-links it) ----
+  const selY = (HIST_YEAR!=null && years.includes(HIST_YEAR)) ? HIST_YEAR : years[0];
+  const se = HIST[selY];
+  s.push(`<section class="bs-panel" id="hsSeason"><div class="bs-panel-head"><h2 class="bs-h2">Season ${selY}</h2><span class="bs-meta">Final standings</span></div>`
+    + `<div class="bs-panel-body"><div class="bs-tabs bs-tabs--sub wtabs" role="tablist" aria-label="Season" id="hsTabs">`
+    + years.map(y=>`<button type="button" role="tab" id="hsY-${y}" data-key="${y}" aria-controls="hsPane" aria-selected="${y===selY}" tabindex="${y===selY?0:-1}">${y}</button>`).join("")
+    + `</div>${HIST_YEAR!=null && !years.includes(HIST_YEAR) ? `<p class="cap">There's no ESPN data for ${esc(HIST_YEAR)}; showing ${selY}.</p>` : ""}</div>`
+    + `<div id="hsPane" role="tabpanel" aria-labelledby="hsY-${selY}" tabindex="0">`);
+  if(!se || se.state!=="ok") s.push(`<div class="bs-panel-body"><p class="cap">${se && se.state==="err" ? `Couldn't load ${selY}. Try again later.` : `Loading ${selY}…`}</p></div>`);
+  else {
+    const S = se.data, P = S.playoffTeams;
+    s.push(`<div class="bs-table-wrap"><table class="bs-table bs-table--stick1"><thead><tr><th class="num" scope="col" title="Final finish">Fin</th><th scope="col">Team</th>`
+      + `<th class="num" scope="col">W-L</th><th class="num" scope="col">PF</th><th class="num" scope="col" title="Playoff seed after the regular season">Seed</th></tr></thead><tbody>`
+      + S.teams.slice().sort((a,b)=>(a.rank||99)-(b.rank||99)).map(tm=>`<tr><td class="num">${tm.rank||"—"}</td><td>${teamWho(S, tm)}</td>`
+          + `<td class="num">${tm.w}-${tm.l}${tm.t ? "-"+tm.t : ""}</td><td class="num">${pts(tm.pf)}</td>`
+          + `<td class="num">${tm.seed ? (P && tm.seed<=P ? tm.seed : `<span class="bs-dim">${tm.seed}</span>`) : "—"}</td></tr>`).join("")
+      + `</tbody></table></div><div class="bs-panel-body"><p class="cap">${S.size} teams. ${P ? `Seeds 1-${P} made the playoffs (dim seed = missed).` : ""}</p></div>`);
+  }
+  s.push(`</div></section>`);
+
+  // ---- what's not here ----
+  s.push(`<section class="bs-panel"><div class="bs-panel-body">`
+    + `<p class="cap">ESPN has no data for this league before ${HIST_FIRST} (its API answers not-found), so earlier seasons aren't shown.</p>`
+    + `<p class="cap">The ${esc(LEAGUE.season)} season joins History once it's over. Past seasons are saved in this browser after the first visit.</p>`
+    + (failed.length ? `<p class="cap">Couldn't load: ${failed.join(", ")}. They'll be retried the next time History opens.</p>` : "")
+    + `</div></section>`);
+
+  const hadFocus = document.getElementById("hsTabs")?.contains(document.activeElement);
+  el.innerHTML = s.join("");
+  const ht = document.getElementById("hsTabs");
+  if(ht){
+    wireTabs(ht, k=>{
+      const f = ht.contains(document.activeElement);
+      HIST_YEAR = Number(k); paintHistory(); writeHash();
+      if(f) document.getElementById("hsY-"+k)?.focus();
+    });
+    if(hadFocus) document.getElementById("hsY-"+selY)?.focus();
+  }
 }
 
 /* ============================ LOAD / SHELL ============================ */
@@ -1360,7 +1624,7 @@ async function load(){
     // first successful load: apply the week/position parts of a shared link (needs D.regWeeks). Auto-refresh keeps in-memory state.
     if(!HASH_APPLIED){ applyHash(readHash()); HASH_APPLIED = true; }
     document.getElementById("sub").textContent = `${DATA.size} teams · ${DATA.season||LEAGUE.season} · Week ${DATA.week}`;
-    paintScores(); paintStandings(); paintPlayoffs(); paintLeaders();
+    paintScores(); paintStandings(); paintPlayoffs(); paintLeaders(); paintTeams(); paintHistory();
     writeHash();
     const hhmm = new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
     status.textContent = `ESPN · updated ${hhmm}`;
@@ -1465,6 +1729,7 @@ function selectTab(key, opts){
   TAB_KEYS.forEach(k=> document.getElementById("pane-"+k).classList.toggle("hide", k!==key));
   // scroll to the tab bar only when it has scrolled above the viewport
   if(!(opts&&opts.noScroll) && tl.getBoundingClientRect().top < 0) tl.scrollIntoView({block:"start"});
+  if(key==="history") ensureHistory();   // past seasons: localStorage first, fetch only what's missing
   writeHash();
 }
 wireTabs(document.getElementById("mainTabs"), k=>{ PO_SUB = null; PO_SCROLL = false; selectTab(k); });
@@ -1472,9 +1737,11 @@ wireTabs(document.getElementById("mainTabs"), k=>{ PO_SUB = null; PO_SCROLL = fa
 addEventListener("hashchange", ()=>{
   const h = readHash();
   applyHash(h);
-  if(DATA){ paintScores(); paintLeaders(); }
+  if(DATA){ paintScores(); paintLeaders(); paintTeams(); }
+  paintHistory();
   selectTab(h.tab, {noScroll:true});
   scrollToPlayoffSub();
+  if(h.tab==="teams" && h.teamId!=null){ const p = document.getElementById("pane-teams"); if(p.getBoundingClientRect().top < 0) p.scrollIntoView({block:"start"}); }
 });
 document.getElementById("refreshBtn").addEventListener("click", load);
 

@@ -31,6 +31,53 @@ const ALLOWED_ORIGINS = [
 const CACHE = new Map();
 const CACHE_TTL_MS = 60 * 1000;
 
+/* ---------- privacy sanitizer (owner decision 5, 2026-10-13) ----------
+   ESPN's payload carries every league member's ESPN id (the SWID-format GUID), first/last
+   name and notification settings, plus pending waiver claims. A public page needs none of
+   it. Before anything is cached or returned:
+   - every braced GUID string ("{XXXXXXXX-XXXX-...}": members[].id, teams[].owners[],
+     teams[].primaryOwner, ...) becomes a short one-way hash "m" + 10 hex. The same GUID
+     always gives the same hash, so owners can still be grouped across seasons (History).
+   - these keys are removed wherever they appear: PII (notificationSettings, firstName,
+     lastName, displayName), pending claims (pendingTransactions, pendingTransactionIds: bid
+     amounts + transaction ids), ESPN blurbs (seasonOutlook, outlooks; unused by the Hub) and
+     team.logo (uploaded logos are UUID-keyed image URLs; the Hub shows assets/logos instead).
+   Team names/abbrevs, team ids, rosters and currentSimulationResults are kept.
+   The client uses player.fullName, so dropping player first/last names changes nothing. */
+const crypto = require("crypto");
+const GUID_RE = /^\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}$/;
+const DROP_KEYS = new Set([
+  "notificationSettings","firstName","lastName","displayName",
+  "pendingTransactions","pendingTransactionIds","seasonOutlook","outlooks","logo",
+]);
+function hashId(g){
+  const norm = String(g).replace(/[{}]/g, "").toUpperCase();
+  return "m" + crypto.createHash("sha256").update(norm).digest("hex").slice(0, 10);
+}
+function scrub(v){
+  if(typeof v === "string") return GUID_RE.test(v) ? hashId(v) : v;
+  if(Array.isArray(v)) return v.map(scrub);
+  if(v && typeof v === "object"){
+    const out = {};
+    for(const k of Object.keys(v)){ if(!DROP_KEYS.has(k)) out[k] = scrub(v[k]); }
+    return out;
+  }
+  return v;
+}
+const HASHED_RE = /^m[0-9a-f]{10}$/;
+const ensureHashed = g => (g == null ? g : (HASHED_RE.test(String(g)) ? g : hashId(g)));
+function sanitize(data){
+  const out = scrub(data);
+  // members: keep only the hashed id (count + cross-season key; no names or settings)
+  if(Array.isArray(out.members)) out.members = out.members.map(m => ({ id: ensureHashed(m && m.id) }));
+  // owners: hashed even if ESPN ever sends them in a non-braced form
+  if(Array.isArray(out.teams)) out.teams.forEach(t => {
+    if(Array.isArray(t.owners)) t.owners = t.owners.map(ensureHashed);
+    if(t.primaryOwner != null) t.primaryOwner = ensureHashed(t.primaryOwner);
+  });
+  return out;
+}
+
 function setCors(req, res){
   const origin = req.headers.origin;
   if(origin && ALLOWED_ORIGINS.includes(origin)){
@@ -103,7 +150,7 @@ module.exports = async (req, res) => {
       res.status(502).json({ error:"espn_upstream", status: espnRes.status });
       return;
     }
-    const data = await espnRes.json();
+    const data = sanitize(await espnRes.json());   // sanitize BEFORE caching, so cached copies are clean too
     CACHE.set(cacheKey, { ts: now, data });
     res.setHeader("X-Cache", "MISS");
     res.setHeader("Cache-Control", "public, max-age=60");
@@ -112,3 +159,4 @@ module.exports = async (req, res) => {
     res.status(502).json({ error:"fetch_failed", message: String(e && e.message || e) });
   }
 };
+module.exports.sanitize = sanitize;   // exported for local verification only (the handler stays the default export)

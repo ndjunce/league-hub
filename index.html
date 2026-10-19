@@ -54,10 +54,24 @@
   .po-text{margin:0 0 var(--sp-2);line-height:1.45}
   .swipe-cue{display:none}
   @media (max-width:519px){
-    #mainTabs{flex-wrap:wrap}
+    #mainTabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));overflow:visible}
+    #mainTabs [role="tab"]{min-width:0;white-space:normal;text-align:center;justify-content:center;padding:8px 2px;min-height:44px;font-size:11px;letter-spacing:.02em;line-height:1.2}
     .swipe-cue{display:block;flex-basis:100%;text-align:right}
   }
   .live{color:var(--down)}
+  .snapshot-games{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+  .snapshot-game{border:1px solid var(--border);padding:10px;min-width:0;font-size:var(--fs-meta)}
+  .snapshot-game strong{display:block;margin-top:4px;overflow-wrap:anywhere}
+  .snapshot-game .sub-line{margin-top:4px}
+  .predictor-week{border:1px solid var(--border);border-radius:var(--r-panel);margin-top:8px}
+  .predictor-week summary{padding:10px;cursor:pointer;font-weight:600}
+  .predictor-game{padding:10px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .predictor-picks{display:flex;gap:6px;flex-wrap:wrap}
+  .predictor-picks button[aria-pressed="true"]{border-color:var(--accent);background:var(--surface-2);color:var(--accent-text-dark)}
+  [data-theme="light"] .predictor-picks button[aria-pressed="true"]{color:var(--accent-text-light)}
+  .predictor-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  .predictor-picks .bs-btn{min-height:44px}
+  @media(max-width:519px){.snapshot-games{grid-template-columns:1fr}}
   .why{color:var(--text-2);font-size:var(--fs-micro)}
   /* standings: stick1 pins Seed; this pins Team right after it (fixed-width Seed column) */
   .st-table th:first-child,.st-table td:first-child{width:40px;min-width:40px;max-width:40px}
@@ -111,22 +125,30 @@
     <button type="button" role="tab" id="tab-scores" data-key="scores" aria-controls="pane-scores" aria-selected="true">Scores</button>
     <button type="button" role="tab" id="tab-standings" data-key="standings" aria-controls="pane-standings" aria-selected="false" tabindex="-1">Standings</button>
     <button type="button" role="tab" id="tab-playoffs" data-key="playoffs" aria-controls="pane-playoffs" aria-selected="false" tabindex="-1">Playoffs</button>
-    <button type="button" role="tab" id="tab-teams" data-key="teams" aria-controls="pane-teams" aria-selected="false" tabindex="-1">Teams</button>
-    <button type="button" role="tab" id="tab-leaders" data-key="leaders" aria-controls="pane-leaders" aria-selected="false" tabindex="-1">Leaders</button>
-    <button type="button" role="tab" id="tab-history" data-key="history" aria-controls="pane-history" aria-selected="false" tabindex="-1">History</button>
+    <button type="button" role="tab" id="tab-predictor" data-key="predictor" aria-controls="pane-predictor" aria-selected="false" tabindex="-1">Season Predictor</button>
+    <button type="button" role="tab" id="tab-more" data-key="more" aria-controls="pane-more" aria-selected="false" tabindex="-1">More</button>
   </div>
 
   <div id="errbox"></div>
   <div id="pane-scores" role="tabpanel" aria-labelledby="tab-scores"><div class="loading">Loading…</div></div>
   <div id="pane-standings" role="tabpanel" aria-labelledby="tab-standings" class="hide"><div class="loading">Loading…</div></div>
+  <div id="pane-predictor" role="tabpanel" aria-labelledby="tab-predictor" class="hide"><div class="loading">Loading…</div></div>
   <div id="pane-playoffs" role="tabpanel" aria-labelledby="tab-playoffs" class="hide"><div class="loading">Loading…</div></div>
-  <div id="pane-teams" role="tabpanel" aria-labelledby="tab-teams" class="hide"><div class="loading">Loading…</div></div>
-  <div id="pane-leaders" role="tabpanel" aria-labelledby="tab-leaders" class="hide"><div class="loading">Loading…</div></div>
-  <div id="pane-history" role="tabpanel" aria-labelledby="tab-history" class="hide"><div class="loading">Loading…</div></div>
+  <div id="pane-more" role="tabpanel" aria-labelledby="tab-more" class="hide">
+    <div class="bs-tabs" role="tablist" aria-label="More sections" id="moreTabs">
+      <button type="button" role="tab" id="tab-teams" data-key="teams" aria-controls="pane-teams" aria-selected="true">Teams</button>
+      <button type="button" role="tab" id="tab-leaders" data-key="leaders" aria-controls="pane-leaders" aria-selected="false" tabindex="-1">Leaders</button>
+      <button type="button" role="tab" id="tab-history" data-key="history" aria-controls="pane-history" aria-selected="false" tabindex="-1">History</button>
+    </div>
+    <div id="pane-teams" role="tabpanel" aria-labelledby="tab-teams"><div class="loading">Loading…</div></div>
+    <div id="pane-leaders" role="tabpanel" aria-labelledby="tab-leaders" class="hide"><div class="loading">Loading…</div></div>
+    <div id="pane-history" role="tabpanel" aria-labelledby="tab-history" class="hide"><div class="loading">Loading…</div></div>
+  </div>
 
   <div class="foot" id="foot"></div>
 </div>
 
+<script src="assets/standings-scenarios.js"></script>
 <script>
 /* =============================================================================
    League Hub — standalone, shareable, league-FACING. No personal/targeting data.
@@ -144,6 +166,8 @@ const LEAGUE = {
   espnProxy: (location.hostname.endsWith("vercel.app") || location.hostname==="localhost")
     ? "/api/espn"
     : "https://fantasy-dashboard-orpin.vercel.app/api/espn",  // fallback to the existing proxy
+  nflStatusProxy: (location.hostname.endsWith("vercel.app") || location.hostname==="localhost")
+    ? "/api/nfl-status" : "https://royalcrushersleaguehub.vercel.app/api/nfl-status",
 };
 
 // Real member names keyed by ESPN teamId (id-keyed = immune to team-name edits).
@@ -245,7 +269,7 @@ providers.espn = (function(){
     const byWeek = {};
     stats.forEach(s=>{ if(s.statSourceId===0 && s.statSplitTypeId===1 && s.scoringPeriodId!=null) byWeek[s.scoringPeriodId] = Math.round((s.appliedTotal||0)*10)/10; });
     return { id:String(p.id||entry.playerId||""), name:p.fullName||("id "+(entry.playerId||"?")),
-             pos: POS[p.defaultPositionId]||"?", team: PRO[p.proTeamId]||"",
+             pos: POS[p.defaultPositionId]||"?", team: PRO[p.proTeamId]||"", proTeamId:p.proTeamId,
              eligible: (p.eligibleSlots||[]).slice(),          // raw slot ids the player can fill
              slot: SLOT[entry.lineupSlotId] || String(entry.lineupSlotId),
              slotId: entry.lineupSlotId,
@@ -302,6 +326,12 @@ providers.espn = (function(){
     const byes = playoffRounds ? Math.max(0, Math.pow(2, playoffRounds) - playoffTeams) : 0;
     const seedingRule = sched.playoffSeedingRule || null;   // e.g. "TOTAL_POINTS_SCORED" (the sim + clinch math assume it)
     const week = (d.status && d.status.currentMatchupPeriod) || d.scoringPeriodId || 1;
+    let nflStatus=null;
+    try{
+      const status=await jraw(`${LEAGUE.nflStatusProxy}?season=${encodeURIComponent(LEAGUE.season)}&week=${week}`);
+      if(status.season===Number(LEAGUE.season)&&status.week===week &&
+         (d.scoringPeriodId==null||Number(d.scoringPeriodId)===week)) nflStatus=status;
+    }catch(_){ /* Official scores still work if NFL status is unavailable. */ }
     const teams = (d.teams||[]).map(t=>buildTeam(t, week));
     const byId = {}; teams.forEach(t=>byId[t.id]=t);
 
@@ -331,10 +361,34 @@ providers.espn = (function(){
       }
       return { pts: Math.round(sum*10)/10, computed: sum>0 };     // computed live total from starters
     }
+    // Snapshot standings keep ESPN's full precision, including negative/zero final scores.
+    // Existing score cards retain their established display behavior.
+    function snapshotSideScore(side, final){
+      const roster = side.rosterForMatchupPeriod || side.rosterForCurrentScoringPeriod;
+      const entries = roster && roster.entries;
+      const total = side.totalPoints;
+      if(Number.isFinite(total) && (final || total !== 0)) return total;
+      if(entries && entries.length) return entries.reduce((sum,e)=>{
+        if(e.lineupSlotId===20 || e.lineupSlotId===21) return sum;
+        const value = e.playerPoolEntry && e.playerPoolEntry.appliedStatTotal;
+        return sum + (Number.isFinite(value) ? value : 0);
+      },0);
+      return Number.isFinite(total) ? total : null;
+    }
     // games from schedule; winner from ESPN when set; scores prefer totalPoints, else computed-from-starters.
     const games = (d.schedule||[]).filter(g=>g.home&&g.away&&g.home.teamId!=null&&g.away.teamId!=null).map(g=>{
       const h = liveSideScore(g.home), a = liveSideScore(g.away);
       const finalized = (g.winner==="HOME" || g.winner==="AWAY" || g.winner==="TIE") && (g.home.totalPoints>0 || g.away.totalPoints>0);
+      const snapshotFinal = ["HOME","AWAY","TIE"].includes(g.winner);
+      function sideCompletion(side){
+        if(g.matchupPeriodId!==week) return null;
+        const roster=side.rosterForMatchupPeriod||side.rosterForCurrentScoringPeriod;
+        const current=(d.teams||[]).find(t=>t.id===side.teamId)?.roster?.entries;
+        const lineup=HubScenarios.starterLineup(roster?.entries,current,startSlots);
+        return {...HubScenarios.completion(lineup.starters,nflStatus,lineup.complete),source:lineup.source};
+      }
+      const homeCompletion=sideCompletion(g.home),awayCompletion=sideCompletion(g.away);
+      const playersFinished=!!(homeCompletion?.done&&awayCompletion?.done);
       return {
         period: g.matchupPeriodId,
         homeId: g.home.teamId, awayId: g.away.teamId,
@@ -343,13 +397,17 @@ providers.espn = (function(){
         // live = scores exist (played) but ESPN hasn't finalized totalPoints yet (computed from starters)
         live: (h.computed || a.computed) && !finalized,
         finalized,
+        snapshotFinal,
+        playersFinished,homeCompletion,awayCompletion,
+        snapshotHomePts: snapshotSideScore(g.home, snapshotFinal || g.matchupPeriodId < week),
+        snapshotAwayPts: snapshotSideScore(g.away, snapshotFinal || g.matchupPeriodId < week),
       };
     });
 
     return {
       provider:"espn", name: settings.name || LEAGUE.name, size: settings.size || teams.length,
       week, regWeeks, playoffStart: regWeeks+1, playoffTeams, playoffRounds, byes, seedingRule,
-      startSlots,
+      startSlots,nflStatusAvailable:!!nflStatus,
       teams, byId, games,
     };
   }
@@ -424,6 +482,7 @@ function weekGames(D, wk){
       winId: tie?null:(homeWon?g.homeId:g.awayId), loseId: tie?null:(homeWon?g.awayId:g.homeId),
       winPts: Math.max(g.homePts,g.awayPts), losePts: Math.min(g.homePts,g.awayPts),
       live: !!g.live, finalized: !!g.finalized,
+      playersFinished:!!g.playersFinished, snapshotFinal:!!g.snapshotFinal,
     };
   });
 }
@@ -595,7 +654,8 @@ function paintScores(){
     const homeWins = scored && !g.tie && g.homePts>g.awayPts;
     const awayWins = scored && !g.tie && g.awayPts>g.homePts;
     const cls = (won, lost) => won ? "" : (lost ? " lose-side" : "");
-    const st = g.finalized ? `<span class="bs-micro">FINAL</span>`
+    const st = g.finalized||g.snapshotFinal ? `<span class="bs-micro">FINAL</span>`
+             : g.playersFinished ? `<span class="bs-micro" title="Every starter's NFL game is finished. Subject to stat corrections.">FINAL · STARTERS DONE</span>`
              : g.live ? `<span class="bs-micro live">● LIVE</span>` : (scored ? "" : `<span class="bs-micro">—</span>`);
     const mov = scored ? (g.tie ? ` <span class="bs-micro">tie</span>` : ` <span class="bs-micro">+${pts(g.margin)}</span>`) : "";
     return `<tr>
@@ -612,10 +672,10 @@ function paintScores(){
   if(isFuture || !anyScores){
     weekBody = `<p class="cap">${isFuture?`Week ${wk} schedule.`:`No scores yet for Week ${wk}.`}</p>` + resultsTable(wgAll.map(resultRow).join(""));
   } else {
-    const anyLive = wgScored.some(g=>g.live);
+    const anyLive = wgScored.some(g=>g.live&&!g.playersFinished&&!g.snapshotFinal);
     const liveNote = anyLive
-      ? `<p class="cap"><span class="live">● LIVE</span> scores are summed from starters until ESPN finalizes the week (Tuesday). Players yet to kick off show 0.</p>`
-      : "";
+      ? `<p class="cap"><span class="live">● LIVE</span> means the matchup is unfinished. Players yet to kick off show 0. A matchup is finished when every starter's NFL game ends, or ESPN declares it final; stat corrections remain possible.</p>`
+      : wgScored.some(g=>g.playersFinished&&!g.snapshotFinal)?`<p class="cap">FINAL · STARTERS DONE means every starter's NFL game has finished. ESPN may finalize the fantasy result later; stat corrections remain possible.</p>`:"";
     weekBody = liveNote + resultsTable(wgScored.map(resultRow).join(""));
   }
 
@@ -659,7 +719,183 @@ function paintScores(){
 }
 
 /* ============================ STANDINGS ============================ */
-// The ONE full standings table (proposal 3.6). Odds / Bye / Proj W-L are the Hub simulation's; Status + Line are
+// Rebuild this week's snapshot from ESPN matchup history, rather than adding a win
+// to official records that ESPN may already have updated. Never mutate DATA.
+function scoreHeldStandings(D,allowNoScores=false){
+  const unavailable = reason=>({rows:[],games:[],reason});
+  if(D.provider!=="espn") return unavailable("This view requires ESPN matchup data.");
+  if(D.week>D.regWeeks) return unavailable("Regular-season standings are complete. Playoff games do not change them.");
+  if(D.seedingRule && D.seedingRule!=="TOTAL_POINTS_SCORED")
+    return unavailable("The league's seeding rule needs verification before showing projected ranks.");
+  const ids = new Set(D.teams.map(t=>t.id));
+  const games = D.games.filter(g=>g.period>=1 && g.period<=D.week);
+  const rows = new Map(D.teams.map(t=>[t.id,{id:t.id,w:0,l:0,t:0,pf:0,pa:0}]));
+  const seen = new Set();
+  for(const g of games){
+    if(!ids.has(g.homeId)||!ids.has(g.awayId)||g.homeId===g.awayId)
+      return unavailable("ESPN's matchup schedule is incomplete. Try Refresh.");
+    for(const id of [g.homeId,g.awayId]){
+      const key = `${g.period}:${id}`;
+      if(seen.has(key)) return unavailable("ESPN returned duplicate matchup entries. Try Refresh.");
+      seen.add(key);
+    }
+    if(!Number.isFinite(g.snapshotHomePts)||!Number.isFinite(g.snapshotAwayPts))
+      return unavailable("ESPN has not supplied all matchup scores. Try Refresh.");
+  }
+  // Royal Crushers plays one H2H matchup per team per regular-season week.
+  for(let w=1;w<=D.week;w++) for(const id of ids)
+    if(!seen.has(`${w}:${id}`)) return unavailable("ESPN's weekly schedule is incomplete. Try Refresh.");
+  const current = games.filter(g=>g.period===D.week);
+  const started = current.some(g=>g.snapshotFinal || g.playersFinished || g.snapshotHomePts!==0 || g.snapshotAwayPts!==0);
+  if(!started&&!allowNoScores) return {...unavailable("No scores yet for this week. Projected standings will appear once ESPN reports scoring."),games:current};
+  for(const g of games){
+    const h=rows.get(g.homeId),a=rows.get(g.awayId);
+    h.pf+=g.snapshotHomePts; h.pa+=g.snapshotAwayPts;
+    a.pf+=g.snapshotAwayPts; a.pa+=g.snapshotHomePts;
+    const result = g.snapshotFinal ? g.winner :
+      (Math.abs(g.snapshotHomePts-g.snapshotAwayPts)<1e-8 ? "TIE" : g.snapshotHomePts>g.snapshotAwayPts ? "HOME" : "AWAY");
+    if(result==="HOME"){h.w++;a.l++;} else if(result==="AWAY"){a.w++;h.l++;} else {h.t++;a.t++;}
+  }
+  // Cross-check the historical baseline against official ESPN totals. A complete
+  // schedule full of placeholder zeros must not masquerade as valid history.
+  // Official records and PF may update separately, so accept before/after states
+  // independently. The current result is removed exactly once for this check.
+  const prior=new Map([...rows].map(([id,r])=>[id,{...r}]));
+  for(const g of current){
+    const h=prior.get(g.homeId),a=prior.get(g.awayId);
+    h.pf-=g.snapshotHomePts;a.pf-=g.snapshotAwayPts;
+    const result=g.snapshotFinal?g.winner:(Math.abs(g.snapshotHomePts-g.snapshotAwayPts)<1e-8?"TIE":g.snapshotHomePts>g.snapshotAwayPts?"HOME":"AWAY");
+    if(result==="HOME"){h.w--;a.l--;}else if(result==="AWAY"){a.w--;h.l--;}else{h.t--;a.t--;}
+  }
+  for(const team of D.teams){
+    const before=prior.get(team.id),after=rows.get(team.id),official=team.record;
+    const recordMatches=r=>r.w===official.w && r.l===official.l && r.t===official.t;
+    if((!recordMatches(before)&&!recordMatches(after)) ||
+       (Math.abs(team.pf-before.pf)>0.011 && Math.abs(team.pf-after.pf)>0.011))
+      return unavailable("ESPN's records and matchup history have not synchronized. Try Refresh; official standings remain below.");
+  }
+  // A tied game is half a win. PF is the verified league tiebreak; exact ties
+  // share a rank (team id only stabilizes display order, never breaks the tie).
+  const sorted=[...rows.values()].sort((a,b)=>(b.w+b.t/2-a.w-a.t/2)||(b.pf-a.pf)||(a.id-b.id));
+  const official=new Map(standingsList(D).map(r=>[r.id,r.rank]));
+  sorted.forEach((r,i)=>{
+    const prev=sorted[i-1];
+    r.rank=prev && r.w+r.t/2===prev.w+prev.t/2 && Math.abs(r.pf-prev.pf)<1e-8 ? prev.rank : i+1;
+    r.move=official.get(r.id)-r.rank;
+  });
+  return {rows:sorted,games:current,reason:null,pending:current.filter(g=>!g.snapshotFinal&&!g.playersFinished).length};
+}
+
+function scoreHeldPanel(D){
+  const snapshot=scoreHeldStandings(D);
+  const label="If current scores hold";
+  let html=`<section class="bs-panel" aria-labelledby="snapshot-title"><div class="bs-panel-head"><h2 class="bs-h2" id="snapshot-title">${label}</h2>`
+    + `<span class="bs-meta">Week ${D.week} · ${snapshot.reason||snapshot.pending?"Projected / in progress":"All matchups finished"}</span><button type="button" class="bs-btn" data-jump-predictor>Open Season Predictor</button></div><div class="bs-panel-body">`;
+  if(snapshot.reason) return html+`<p class="cap">${esc(snapshot.reason)}</p></div></section>`;
+  html+=`<p class="cap">Current ESPN scores only. Players yet to play, including Monday night, have no future points added. Official standings are shown separately below.</p>`
+    + `<p class="cap">${snapshot.pending ? `${snapshot.pending} of ${snapshot.games.length} matchups are not confirmed finished.` : "Every matchup is finished (ESPN final, or both teams' starters are done). The official records below may take time to update."} Equal scores count as a provisional tie. Scores remain subject to ESPN stat corrections.</p>`
+    + (!D.nflStatusAvailable?`<p class="cap">NFL player status is unavailable; only ESPN-declared finals can be confirmed.</p>`:"")
+    + `<div class="bs-table-wrap"><table class="bs-table bs-table--stick1 st-table" id="scoreHeldTable"><caption class="cap">Projected standings through Week ${D.week} · ESPN scores</caption><thead><tr><th scope="col" class="num">Rank</th><th scope="col">Team</th><th scope="col" class="num">W–L–T</th><th scope="col" class="num">PF</th><th scope="col" class="num">Move*</th></tr></thead><tbody>`;
+  html+=snapshot.rows.map(r=>{
+    const t=D.byId[r.id], move=r.move>0?`↑ ${r.move}`:r.move<0?`↓ ${-r.move}`:"—";
+    return `<tr><td class="num${r.rank===D.playoffTeams?" bs-cut":""}">${r.rank}</td><td><span class="tm-cell">${avatarHtml(r.id,t.short,22)}<span class="nm-short">${esc(t.short)}</span><span class="nm-full">${esc(t.disp)}</span></span></td><td class="num">${r.w}–${r.l}–${r.t}</td><td class="num">${r.pf.toFixed(2)}</td><td class="num">${move}</td></tr>`;
+  }).join("")+`</tbody></table></div><p class="cap">*Movement versus the official standings below. Rank uses wins plus half a win per tie, then total points for. Exact ties share a rank.</p><div class="snapshot-games">`;
+  html+=snapshot.games.map(g=>{
+    const home=D.byId[g.homeId],away=D.byId[g.awayId];
+    const equal=Math.abs(g.snapshotHomePts-g.snapshotAwayPts)<1e-8;
+    const closed=g.snapshotFinal||g.playersFinished;
+    const sideText=(t,c)=>`${esc(t.short)}: ${c?.unknown?`${c.remaining} remaining; lineup/status incomplete`:c?c.remaining?`${c.remaining} starter${c.remaining===1?"":"s"} remaining`:"all starters done":"status unavailable"}`;
+    return `<div class="snapshot-game"><span class="bs-micro${closed?"":" live"}">${g.snapshotFinal?"FINAL — ESPN":g.playersFinished?"FINAL — ALL STARTERS DONE":"IN PROGRESS — NOT FINAL"}</span><strong>${esc(home.short)} ${g.snapshotHomePts.toFixed(2)} · ${esc(away.short)} ${g.snapshotAwayPts.toFixed(2)}</strong>`
+      + `<span class="sub-line">${closed?"Result included once; subject to stat corrections.":equal?"Tied if scores hold.":`${esc(g.snapshotHomePts>g.snapshotAwayPts?home.short:away.short)} wins if scores hold.`}</span>`
+      + (!g.snapshotFinal?`<span class="sub-line">${sideText(home,g.homeCompletion)} · ${sideText(away,g.awayCompletion)}</span>`:"")+`</div>`;
+  }).join("")+`</div></div></section>`;
+  return html;
+}
+
+// Personal what-if picks: local to this browser/origin/league/season. No network writes.
+let SEASON_PICKS={scope:null,picks:{},persistent:true,open:new Set()};
+function seasonPicksScope(){return `hub-season-predictor:${LEAGUE.id}:${LEAGUE.season}:v1`;}
+function loadSeasonPicks(D){
+  const scope=seasonPicksScope();
+  if(SEASON_PICKS.scope!==scope){
+    const remaining=D.games.filter(g=>g.period>=D.week&&g.period<=D.regWeeks&&!HubScenarios.done(g));
+    const firstWeek=remaining.length?Math.min(...remaining.map(g=>g.period)):D.week;
+    SEASON_PICKS={scope,picks:{},persistent:true,open:new Set([firstWeek])};
+    try{
+      const stored=localStorage.getItem(scope);
+      if(stored){const parsed=JSON.parse(stored);if(parsed?.version===1) SEASON_PICKS.picks=parsed.picks||{};}
+    }catch(error){if(!(error instanceof SyntaxError)) SEASON_PICKS.persistent=false;}
+  }
+  SEASON_PICKS.picks=HubScenarios.cleanPicks(SEASON_PICKS.picks,D.games.filter(g=>g.period>=D.week&&g.period<=D.regWeeks));
+}
+function saveSeasonPicks(reset=false){
+  try{
+    if(reset) localStorage.removeItem(SEASON_PICKS.scope);
+    else localStorage.setItem(SEASON_PICKS.scope,JSON.stringify({version:1,picks:SEASON_PICKS.picks}));
+    SEASON_PICKS.persistent=true;
+  }catch(_){SEASON_PICKS.persistent=false;}
+}
+function seasonPredictorPanel(D){
+  loadSeasonPicks(D);
+  const result=HubScenarios.scenario(D,scoreHeldStandings(D,true),SEASON_PICKS.picks);
+  let html=`<section class="bs-panel" id="season-predictor" aria-labelledby="predictor-title"><div class="bs-panel-head"><h2 class="bs-h2" id="predictor-title">Season predictor</h2><span class="bs-meta">Your personal what-if sandbox</span></div><div class="bs-panel-body">`;
+  if(result.reason) return html+`<p class="cap">${esc(result.reason)}</p></div></section>`;
+  const complete=result.left===0;
+  html+=`<p class="cap">Pick winners for every unfinished regular-season matchup, including this week. Finished games are locked. Your choices change only this scenario; they are never shared or official.</p>`
+    + `<div class="predictor-toolbar"><button type="button" class="bs-btn" data-reset-picks>Reset my picks</button><span class="bs-meta" role="status" aria-live="polite">${result.picked} / ${result.total} picks made${result.left?` · ${result.left} remaining`:" · scenario complete"}</span></div>`
+    + `<p class="cap">${SEASON_PICKS.persistent?"Picks save automatically in this browser on this device. Preview and live-site storage are separate.":"Browser storage is unavailable. Picks work for this visit, but will not survive a reload."}</p>`
+    + `<p class="cap">*Seed tiebreaks use current points for (including this week's scores), held fixed. Future scoring and stat corrections can change tied teams' seeds. ${complete?"These are scenario final records and seeds.":"Records and ranks are partial until you choose every game; unpicked games add no win, loss, or tie."}</p>`
+    + `<div class="bs-table-wrap"><table class="bs-table bs-table--stick1 st-table" id="seasonScenarioTable"><caption class="cap">${complete?"Scenario final records / playoff seeds":"Partial scenario — picks still needed"}</caption><thead><tr><th scope="col" class="num">${complete?"Seed*":"Rank*"}</th><th scope="col">Team</th><th scope="col" class="num">W–L–T</th><th scope="col" class="num">PF*</th><th scope="col">${complete?"Playoffs*":"State"}</th></tr></thead><tbody>`;
+  html+=result.rows.map(r=>{
+    const team=D.byId[r.id],tied=result.rows.filter(t=>t.rank===r.rank).length,lastSeed=r.rank+tied-1;
+    let state="Picks incomplete";
+    if(complete){
+      state=r.rank>D.playoffTeams?"Outside playoffs":lastSeed>D.playoffTeams?"Tied at cutoff":
+        D.byes&&r.rank<=D.byes?(lastSeed<=D.byes?"Playoffs + bye":"Playoffs; bye tied"):"Playoffs";
+    }
+    return `<tr><td class="num">${tied>1?"T-":""}${r.rank}</td><td><span class="tm-cell">${avatarHtml(r.id,team.short,22)}<span class="nm-short">${esc(team.short)}</span><span class="nm-full">${esc(team.disp)}</span></span></td><td class="num">${r.w}–${r.l}–${r.t}</td><td class="num">${r.pf.toFixed(2)}</td><td>${state}</td></tr>`;
+  }).join("")+`</tbody></table></div>`;
+  const byWeek=new Map();
+  for(const g of result.games){if(!byWeek.has(g.period)) byWeek.set(g.period,[]);byWeek.get(g.period).push(g);}
+  for(const [week,games] of byWeek){
+    const picked=games.filter(g=>SEASON_PICKS.picks[HubScenarios.key(g)]).length;
+    html+=`<details class="predictor-week" data-predictor-week="${week}"${SEASON_PICKS.open.has(week)?" open":""}><summary>Week ${week}${week===D.week?" · in progress":""} — ${picked}/${games.length} picked</summary>`;
+    for(const g of games){
+      const key=HubScenarios.key(g),choice=SEASON_PICKS.picks[key],h=D.byId[g.homeId],a=D.byId[g.awayId];
+      html+=`<div class="predictor-game"><span><span class="tm-cell">${avatarHtml(a.id,a.short,24)}${esc(a.short)}</span> at <span class="tm-cell">${avatarHtml(h.id,h.short,24)}${esc(h.short)}</span>${week===D.week?`<span class="sub-line">Current: ${g.snapshotAwayPts.toFixed(2)} – ${g.snapshotHomePts.toFixed(2)} · not final</span>`:""}</span><div class="predictor-picks" role="group" aria-label="Week ${week}: ${esc(a.short)} at ${esc(h.short)}">`;
+      for(const [pick,label] of [["AWAY",a.short],["HOME",h.short],["TIE","Tie"]])
+        html+=`<button type="button" class="bs-btn" data-game="${key}" data-pick="${pick}" aria-label="${pick==="TIE"?"Pick a tie":`Pick ${esc(label)} to win`} · Week ${week}" aria-pressed="${choice===pick}">${pick==="TIE"?"":avatarHtml(pick==="HOME"?h.id:a.id,label,20)} ${esc(label)}</button>`;
+      html+=`</div></div>`;
+    }
+    html+=`</details>`;
+  }
+  if(!result.games.length) html+=`<p class="cap">No unfinished regular-season games remain. Finished results are locked.</p>`;
+  return html+`</div></section>`;
+}
+function wireSeasonPredictor(D,el){
+  const panel=el.querySelector('#season-predictor');if(!panel)return;
+  panel.addEventListener('toggle',event=>{
+    const week=Number(event.target.dataset?.predictorWeek);if(!week)return;
+    if(event.target.open) SEASON_PICKS.open.add(week);else SEASON_PICKS.open.delete(week);
+  },true);
+  panel.addEventListener('click',event=>{
+    const button=event.target.closest('button');if(!button)return;
+    const key=button.dataset.game,pick=button.dataset.pick,reset=button.hasAttribute('data-reset-picks');
+    if(reset) SEASON_PICKS.picks={};
+    else{
+      const game=D.games.find(g=>HubScenarios.key(g)===key&&!HubScenarios.done(g));
+      if(!game||!['HOME','AWAY','TIE'].includes(pick))return;
+      if(SEASON_PICKS.picks[key]===pick)delete SEASON_PICKS.picks[key];else SEASON_PICKS.picks[key]=pick;
+    }
+    saveSeasonPicks(reset);
+    panel.outerHTML=seasonPredictorPanel(D);
+    wireSeasonPredictor(D,el);
+    const next=el.querySelector('#season-predictor');
+    (reset?next.querySelector('[data-reset-picks]'):next.querySelector(`[data-game="${key}"][data-pick="${pick}"]`))?.focus({preventScroll:true});
+  });
+}
+
+// The ONE official standings table (proposal 3.6). Odds / Bye / Proj W-L are the Hub simulation's; Status + Line are
 // the playoff engine's exact-math badges. "—" until the engine has run (odds start in Week 3).
 function paintStandings(){
   const D = DATA; const el = document.getElementById("pane-standings");
@@ -669,10 +905,10 @@ function paintStandings(){
   const P = D.playoffTeams, B = D.byes || 0;
   const sl = standingsList(D);
   const dash = `<span class="bs-dim">—</span>`;
-  const s = [];
+  const s = [scoreHeldPanel(D)];
   if(D.week<=2) s.push(`<p class="cap">Week ${D.week}: small samples. Playoff odds start in Week 3.</p>`);
   const meta = `Top ${P} make it${B ? ` · ${B===1 ? "#1 gets a bye" : `top ${B} get byes`}` : ""}`;
-  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Standings</h2><span class="bs-meta">${meta}</span>`
+  s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Official standings</h2><span class="bs-meta">ESPN records · ${meta}</span>`
     + `<span class="bs-meta swipe-cue">Swipe the table for PF, PA, Bye, Proj W-L and Streak</span></div>`
     + `<div class="bs-table-wrap"><table class="bs-table bs-table--stick1 st-table" id="standingsTable">`
     + `<thead><tr><th class="num" scope="col">Sd</th><th scope="col">Team</th><th class="num" scope="col">W-L</th>`
@@ -711,6 +947,12 @@ function paintStandings(){
     + `<p class="cap">Playoffs, Bye and Proj W-L come from the Hub's simulation${D.week<3 ? " (from Week 3 on)" : ""}; ESPN's own odds are next to them on <a href="#playoffs/teams">Playoffs</a>. Odds: see Playoffs › How this works.</p>`
     + `</div></section>`);
   el.innerHTML = s.join("");
+  el.querySelector('[data-jump-predictor]')?.addEventListener('click',()=>selectTab('predictor'));
+}
+function paintSeasonPredictor(){
+  const el=document.getElementById('pane-predictor');
+  if(!DATA){el.innerHTML='<div class="note">No data.</div>';return;}
+  el.innerHTML=seasonPredictorPanel(DATA);wireSeasonPredictor(DATA,el);
 }
 
 /* ============================ LEADERS ============================ */
@@ -1021,7 +1263,8 @@ function clinchMath(D){
   return { byId:out, exact };
 }
 
-// Badges (proposal 3.5): one rule, by games from the line. BUBBLE = undecided and within 1 game either side.
+// Owner rule: Bubble includes up to one win above the cutoff and all still-alive
+// teams below it. Existing exact clinch/elimination decisions take precedence.
 const BADGE = { bye:{label:"BYE",cls:"bs-up"}, clinched:{label:"CLINCHED",cls:"bs-up"}, in:{label:"IN",cls:"bs-up"},
   bubble:{label:"BUBBLE",cls:"bs-warn"}, out:{label:"OUT",cls:"bs-dim"}, elim:{label:"ELIMINATED",cls:"bs-down"} };
 function badgeHtml(b){ return `<span class="bs-tag ${b.cls}">${b.label}</span>`; }
@@ -1033,9 +1276,7 @@ function playoffBadges(D, cm){
   st.forEach((r,i)=>{
     const c = cm.byId[r.id], Wi = Wd(r), inNow = i < P;
     const gap = inNow ? Wi - W8 : W7 - Wi;                 // in: games over the first team out; out: games back
-    let key;
-    if(c.clinchedBye) key = "bye"; else if(c.clinchedIn) key = "clinched"; else if(c.eliminated) key = "elim";
-    else key = gap > 1 ? (inNow ? "in" : "out") : "bubble";
+    const key=HubScenarios.playoffStatus({inNow,wins:Wi,cutoffWins:W7,...c});
     byId[r.id] = { key, label:BADGE[key].label, cls:BADGE[key].cls, seed:i+1, inNow, gap,
       line: gap===0 ? "0, on points" : inNow ? `+${fmtW(gap)}` : `${fmtW(gap)} back` };
   });
@@ -1179,16 +1420,15 @@ function paintPlayoffs(){
   }
   s.push(`</section>`);
 
-  // ---- 3. The Bubble (one card per team within a game of the line, undecided) ----
+  // ---- 3. The Bubble: within one win above cutoff plus all alive below it ----
   const bubble = E ? st.filter(r=>E.bd.byId[r.id].key==="bubble").map(r=>r.id) : [];
   const bset = new Set(bubble);
   const swingGames = E ? E.rem.filter(g=>bset.has(g.homeId) && bset.has(g.awayId)).length : 0;
   s.push(`<section class="bs-panel" id="po-bubble"><div class="bs-panel-head"><h2 class="bs-h2">The Bubble</h2>`
-    + `<span class="bs-meta">${E ? `${bubble.length} team${bubble.length===1?"":"s"} within a game of the line` : ""}</span></div><div class="bs-panel-body">`);
+    + `<span class="bs-meta">${E ? `${bubble.length} team${bubble.length===1?"":"s"} in the chase · official records` : ""}</span></div><div class="bs-panel-body">`);
   if(pending) s.push(`<p class="cap">${pending}</p>`);
-  else if(!bubble.length) s.push(`<p class="cap">Nobody is within a game of the playoff line.</p>`);
-  else s.push(`<p class="cap">Not decided yet and within one game of the playoff line (seed ${P}), either side.`
-    + `${bubble.length>=6 ? " The league is bunched, so that is a lot of teams right now." : ""}`
+  else if(!bubble.length) s.push(`<p class="cap">Nobody meets the bubble rule: up to one win above the cutoff, or below it and still mathematically alive.</p>`);
+  else s.push(`<p class="cap">Using official records: teams up to one win above the playoff cutoff (seed ${P}), plus every team below it that can still qualify. Clinched-in and mathematically eliminated teams have separate labels.`
     + ` * = swing game: a head-to-head between two bubble teams (${swingGames} left).</p>`);
   s.push(`</div></section>`);
   if(!pending && bubble.length){
@@ -1624,7 +1864,7 @@ async function load(){
     // first successful load: apply the week/position parts of a shared link (needs D.regWeeks). Auto-refresh keeps in-memory state.
     if(!HASH_APPLIED){ applyHash(readHash()); HASH_APPLIED = true; }
     document.getElementById("sub").textContent = `${DATA.size} teams · ${DATA.season||LEAGUE.season} · Week ${DATA.week}`;
-    paintScores(); paintStandings(); paintPlayoffs(); paintLeaders(); paintTeams(); paintHistory();
+    paintScores(); paintStandings(); paintSeasonPredictor(); paintPlayoffs(); paintLeaders(); paintTeams(); paintHistory();
     writeHash();
     const hhmm = new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
     status.textContent = `ESPN · updated ${hhmm}`;
@@ -1664,9 +1904,12 @@ function setSelectedTab(tablist, key){ tablist.querySelectorAll('[role="tab"]').
   t.setAttribute("aria-selected", on?"true":"false"); t.tabIndex = on?0:-1; }); }
 
 /* ---- URL-hash state (proposal 4): #scores[/wkN] · #standings · #playoffs[/stakes|bubble|teams] ·
-        #teams[/<teamId>] · #leaders[/<POS>] · #history[/<year>]
+        #predictor · #teams[/<teamId>] · #leaders[/<POS>] · #history[/<year>]
         Old links still work: #insights[/wkN] -> #scores[/wkN], #stakes -> #playoffs/stakes, #block -> #teams ---- */
-const TAB_KEYS = ["scores","standings","playoffs","teams","leaders","history"];
+const MAIN_KEYS = ["scores","standings","playoffs","predictor","more"];
+const MORE_KEYS = ["teams","leaders","history"];
+const TAB_KEYS = [...MAIN_KEYS,...MORE_KEYS];
+let LAST_MORE = "teams";
 const LEGACY_TAB = { insights:"scores", stakes:"playoffs", block:"teams" };
 const PO_SUBS = ["stakes","bubble","teams"];
 const HASH_POS = { qb:"QB", rb:"RB", wr:"WR", te:"TE", k:"K", def:"DEF", dst:"DEF" };
@@ -1723,16 +1966,22 @@ function scrollToPlayoffSub(){
 }
 function selectTab(key, opts){
   if(!TAB_KEYS.includes(key)) key = "scores";
+  if(key==="more") key=LAST_MORE;
+  const inMore=MORE_KEYS.includes(key),mainKey=inMore?"more":key;
+  if(inMore)LAST_MORE=key;
   ACTIVE = key;
   const tl = document.getElementById("mainTabs");
-  setSelectedTab(tl, key);
-  TAB_KEYS.forEach(k=> document.getElementById("pane-"+k).classList.toggle("hide", k!==key));
+  setSelectedTab(tl, mainKey);
+  setSelectedTab(document.getElementById("moreTabs"),LAST_MORE);
+  MAIN_KEYS.forEach(k=>document.getElementById("pane-"+k).classList.toggle("hide",k!==mainKey));
+  MORE_KEYS.forEach(k=>document.getElementById("pane-"+k).classList.toggle("hide",k!==key));
   // scroll to the tab bar only when it has scrolled above the viewport
   if(!(opts&&opts.noScroll) && tl.getBoundingClientRect().top < 0) tl.scrollIntoView({block:"start"});
   if(key==="history") ensureHistory();   // past seasons: localStorage first, fetch only what's missing
   writeHash();
 }
 wireTabs(document.getElementById("mainTabs"), k=>{ PO_SUB = null; PO_SCROLL = false; selectTab(k); });
+wireTabs(document.getElementById("moreTabs"), k=>{ PO_SUB = null; PO_SCROLL = false; selectTab(k); });
 { const h0 = readHash(); applyHash(h0); selectTab(h0.tab, {noScroll:true}); }
 addEventListener("hashchange", ()=>{
   const h = readHash();

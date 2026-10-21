@@ -547,19 +547,17 @@ function weekSuperlatives(D, wk){
 function playerGames(p){ return p.gp||0; }
 function playerPPG(p){ return p.seasonPPG||0; }
 
-// Positional Leaders (season): top 3 per position BY ESPN season PPG, minimum games played =
-// ceil(completed weeks / 2) so a one-game fluke can't lead. Rostered players only (ESPN league rosters).
+// Season leaders: full rostered position lists by ESPN season points.
+// The All view takes five from each position, then sorts that combined list by points.
 function positionalLeaders(D){
   const byPos = {};  // pos -> [{id, pos, player, team, ownerId, owner, gp, total, ppg}]
-  const minGames = Math.max(1, Math.ceil((D.week-1)/2));
   D.teams.forEach(t=>t.players.forEach(p=>{
     if(!STARTABLE_POS.includes(p.pos)) return;
-    if(playerGames(p) < minGames) return;
     (byPos[p.pos]=byPos[p.pos]||[]).push({ id:p.id, pos:p.pos, player:p.name, team:p.team, ownerId:t.id, owner:t.short,
       gp:playerGames(p), total:p.seasonPts||0, ppg:playerPPG(p) });
   }));
-  Object.keys(byPos).forEach(P=>{ byPos[P].sort((a,b)=> (b.ppg-a.ppg) || (b.total-a.total)); byPos[P] = byPos[P].slice(0,3); });
-  return { byPos, minGames };
+  Object.keys(byPos).forEach(P=>{ byPos[P].sort((a,b)=> (b.total-a.total) || (b.ppg-a.ppg) || String(a.id).localeCompare(String(b.id))); });
+  return { byPos };
 }
 
 // Top-3 scorers per position for ONE week, from that week's rosters (loadWeekRoster): rows already carry the
@@ -957,31 +955,42 @@ function paintSeasonPredictor(){
 
 /* ============================ LEADERS ============================ */
 let LEAD_POS = "all";   // Leaders filter: "all" or a POS key (QB/RB/WR/TE/K/DEF); #leaders/<POS> deep-links it
+let LEAD_SORT = "total", LEAD_DESC = true;
 function paintLeaders(){
   const D = DATA; const el = document.getElementById("pane-leaders");
   if(!D){ el.innerHTML = `<div class="note">No data.</div>`; return; }
-  const { byPos, minGames } = positionalLeaders(D);
+  const { byPos } = positionalLeaders(D);
   const keys = POS_ORDER.filter(p=>byPos[p] && byPos[p].length);
   if(LEAD_POS!=="all" && !POS_ORDER.includes(LEAD_POS)) LEAD_POS = "all";
   const tabs = [{k:"all", l:"All"}].concat(POS_ORDER.map(p=>({k:p, l:POS_LABEL[p]})));
-  const shown = LEAD_POS==="all" ? keys : keys.filter(p=>p===LEAD_POS);
+  const shown = LEAD_POS==="all"
+    ? keys.flatMap(P=>byPos[P].slice(0,5).map((x,i)=>({...x,posRank:i+1}))).sort((a,b)=>b.total-a.total || b.ppg-a.ppg || String(a.id).localeCompare(String(b.id)))
+    : (byPos[LEAD_POS]||[]).map((x,i)=>({...x,posRank:i+1}));
+  shown.sort((a,b)=>(LEAD_DESC?-1:1)*(a[LEAD_SORT]-b[LEAD_SORT]) || b.total-a.total || b.ppg-a.ppg || String(a.id).localeCompare(String(b.id)));
+  const sortHeader = (key,label,title)=>`<th class="num" scope="col" aria-sort="${LEAD_SORT===key?(LEAD_DESC?"descending":"ascending"):"none"}"><button type="button" class="bs-sort" data-lead-sort="${key}" title="${title}. Sort ${LEAD_SORT===key&&LEAD_DESC?"lowest":"highest"} first">${label}</button></th>`;
   const s = [];
   s.push(`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Positional Leaders</h2>`
-    + `<span class="bs-meta">Season to date, points per game played (ESPN scoring). Rostered players only.</span></div>`
+    + `<span class="bs-meta">Season total points (ESPN scoring). Rostered players only.</span></div>`
     + `<div class="bs-panel-body"><div class="bs-tabs bs-tabs--sub wtabs" role="tablist" aria-label="Position" id="ldTabs">`
     + tabs.map(x=>`<button type="button" role="tab" id="ldPos-${x.k}" data-key="${x.k}" aria-controls="ldPane" aria-selected="${x.k===LEAD_POS}" tabindex="${x.k===LEAD_POS?0:-1}">${x.l}</button>`).join("")
     + `</div></div><div id="ldPane" role="tabpanel" aria-labelledby="ldPos-${LEAD_POS}" tabindex="0">`);
   if(!shown.length) s.push(`<div class="bs-panel-body"><p class="cap">No qualified players yet.</p></div>`);
   else s.push(`<div class="bs-table-wrap"><table class="bs-table bs-table--stick1"><thead><tr><th scope="col">Pos</th><th scope="col">Player</th><th scope="col">Owner</th>`
-      + `<th class="num" scope="col" title="Games played">GP</th><th class="num" scope="col" title="Season points (ESPN scoring)">Total</th>`
-      + `<th class="num" scope="col" title="Season points per game played">PPG</th></tr></thead><tbody>`
-      + shown.map(P=> byPos[P].map((x,i)=>`<tr><td><span class="pos-${P}">${POS_LABEL[P]}</span>${i ? ` <span class="bs-dim">${i+1}</span>` : ""}</td>`
+      + sortHeader("gp","GP","Games played") + sortHeader("total","Total","Season points (ESPN scoring)")
+      + sortHeader("ppg","PPG","Season points per game played") + `</tr></thead><tbody>`
+      + shown.map(x=>`<tr><td><span class="pos-${x.pos}">${POS_LABEL[x.pos]}</span> <span class="bs-dim">${x.posRank}</span></td>`
           + `<td><span class="tm-cell">${playerImgHtml(x.id,x.team,x.pos,20)}<span>${esc(x.player)}</span></span></td>`
           + `<td><span class="tm-cell">${avatarHtml(x.ownerId,x.owner,20)}<span>${esc(x.owner)}</span></span></td>`
-          + `<td class="num">${x.gp}</td><td class="num">${pts(x.total)}</td><td class="num">${pts(x.ppg)}</td></tr>`).join("")).join("")
+          + `<td class="num">${x.gp}</td><td class="num">${pts(x.total)}</td><td class="num">${pts(x.ppg)}</td></tr>`).join("")
       + `</tbody></table></div>`);
-  s.push(`<div class="bs-panel-body"><p class="cap">Minimum ${minGames} game${minGames===1?"":"s"} played (half the completed weeks), so a one-game spike can't lead. Owner = the team that rosters the player now.</p></div></div></section>`);
+  s.push(`<div class="bs-panel-body"><p class="cap">${LEAD_POS==="all"?"Top 5 rostered players per position by season total points; sorting reorders these same players.":"All rostered players at this position. No minimum games played."} Click GP, Total or PPG to sort; click again to reverse. Position numbers show season-total rank within that position. Owner = the team that rosters the player now; free agents are not included.</p></div></div></section>`);
   el.innerHTML = s.join("");
+  el.querySelectorAll('[data-lead-sort]').forEach(button=>button.addEventListener('click',()=>{
+    const key=button.dataset.leadSort;
+    LEAD_DESC = LEAD_SORT===key ? !LEAD_DESC : true; LEAD_SORT=key;
+    paintLeaders();
+    el.querySelector(`[data-lead-sort="${key}"]`)?.focus();
+  }));
   const lt = document.getElementById("ldTabs");
   if(lt) wireTabs(lt, k=>{
     const hadFocus = lt.contains(document.activeElement);
@@ -1157,6 +1166,7 @@ function monteCarlo(D, str){
   const norm = normalSource(mulberry32(Number(LEAGUE.season)*100 + D.week));
   const inCnt = new Uint32Array(NT), seedHist = new Uint32Array(NT*NT), sumW = new Float64Array(NT);
   const cond = new Uint32Array(G*2*NT), homeWins = new Uint32Array(G);   // P(t in | home / away wins g)
+  const byeCond = new Uint32Array(G*2*NT); // same simulated seasons, no additional random draws
   const needIn = new Uint32Array(NT*NW), needAll = new Uint32Array(NT*NW); // by the team's own remaining wins
   const theta = new Float64Array(NT), w = new Float64Array(NT), pf = new Float64Array(NT), myW = new Int32Array(NT);
   const hw = new Uint8Array(G), order = new Int32Array(NT);
@@ -1185,6 +1195,7 @@ function monteCarlo(D, str){
     for(let i=0; i<NT; i++){ sumW[i] += myW[i]; needAll[i*NW + myW[i]]++; }
     for(let r=0; r<P; r++){ const i = order[r]; needIn[i*NW + myW[i]]++; }
     for(let g=0; g<G; g++){ const base = (g*2 + (hw[g] ? 0 : 1))*NT; for(let r=0; r<P; r++) cond[base + order[r]]++; }
+    for(let g=0; g<G; g++){ const base = (g*2 + (hw[g] ? 0 : 1))*NT; for(let r=0; r<B; r++) byeCond[base + order[r]]++; }
   }
   const simMs = performance.now() - t0;
   const ix = {}; T.forEach((t,i)=> ix[t.id] = i);
@@ -1197,7 +1208,7 @@ function monteCarlo(D, str){
     teams[t.id] = { pIn: inCnt[i]/SIM_N, pBye, seedDist, need, gLeft: gLeft[i],
       projW: baseW[i] + mW, projL: t.record.l + 0.5*t.record.t + gLeft[i] - mW, mu: mu[i] };
   });
-  return { N:SIM_N, NT, n, sigma, K, L, sdTheta, simMs, rem, ix, cond, homeWins, teams };
+  return { N:SIM_N, NT, n, sigma, K, L, sdTheta, simMs, rem, ix, cond, byeCond, homeWins, teams };
 }
 
 // P(team makes the playoffs | remaining game gi goes to home (homeWon=true) or away). null if never sampled.
@@ -1378,6 +1389,65 @@ function needLine(mc, id){
   return k===0 ? `Usually in (80%+) even losing out.` : `Usually in (80%+) with ${k} more win${k===1?"":"s"} of ${T.gLeft}.`;
 }
 
+function conditionalBye(mc, gi, id, homeWon){
+  const i = mc.ix[id]; if(i==null || !mc.byeCond) return null;
+  const n = homeWon ? mc.homeWins[gi] : mc.N-mc.homeWins[gi];
+  return n>=100 ? mc.byeCond[(gi*2+(homeWon?0:1))*mc.NT+i]/n : null;
+}
+
+// Exact race membership comes from clinchMath; simulation percentages never eliminate a team.
+function byeRacePanel(D, E){
+  const B = D.byes || 0;
+  const st = D.teams.slice().sort((a,b)=>winsOf(b)-winsOf(a)||b.pf-a.pf)
+    .map((t,i)=>({id:t.id,seed:i+1,...t.record,pf:t.pf}));
+  const mc = E?.mc, sh = id=>D.byId[id]?.short || "—";
+  const alive = st.filter(r=>!E?.cm[r.id]?.byeGone);
+  const title = "Playoff &amp; Bye Race";
+  const team = id=>`<span class="tm-cell">${avatarHtml(id,sh(id),20)}<span>${esc(sh(id))}</span></span>`;
+  const rows = st.map(r=>{
+    const c = E?.cm[r.id], m = mc?.teams[r.id];
+    const playoff = !c ? "Checking…" : c.clinchedIn ? "Clinched playoffs" : c.eliminated ? "Out of playoffs" : E.bd?.byId[r.id]?.key==="bubble" ? "Bubble" : r.seed<=D.playoffTeams ? "In playoff position" : "Below cutoff";
+    const bye = !c ? "Checking…" : c.clinchedBye ? "Clinched bye" : c.byeGone ? "Out of bye race" : r.seed<=B ? "Holds bye today" : "Chasing bye";
+    const pIn = c?.clinchedIn ? "100%" : c?.eliminated ? "0%" : m ? pc(m.pIn) : "—";
+    const pBye = c?.clinchedBye ? "100%" : c?.byeGone ? "0%" : m ? pc(m.pBye) : "—";
+    return `<tr><td>${team(r.id)}</td><td class="num">${recStr(r)}</td><td class="num">${pIn}</td>${B?`<td class="num">${pBye}</td>`:""}<td>${esc(playoff)}${B?`<br><span class="bs-dim">${esc(bye)}</span>`:""}</td></tr>`;
+  }).join("");
+  const details = B && mc ? alive.map(r=>{
+    const c = E.cm[r.id]; if(c.clinchedBye) return "";
+    const games = mc.rem.flatMap((g,gi)=>{
+      if(g.homeId!==r.id && g.awayId!==r.id) return [];
+      const home = g.homeId===r.id, win = conditionalBye(mc,gi,r.id,home), lose = conditionalBye(mc,gi,r.id,!home);
+      return [{g,win,lose,swing:win==null||lose==null ? -1 : Math.abs(win-lose)}];
+    });
+    const current = games.find(x=>x.g.wk===D.week);
+    const biggest = games.slice().sort((a,b)=>b.swing-a.swing)[0];
+    const chosen = [...new Set([current,biggest].filter(Boolean))];
+    return chosen.length ? `<p class="cap"><b>${esc(sh(r.id))}:</b> ${chosen.map(({g,win,lose})=>{
+      const opp = g.homeId===r.id ? g.awayId : g.homeId;
+      return `Week ${g.wk} vs ${esc(sh(opp))}: bye chance ${pc(win)} with a win / ${pc(lose)} with a loss`;
+    }).join(". ")}.</p>` : "";
+  }).join("") : "";
+  return `<section class="bs-panel" id="po-teams"><span id="po-bye"></span><div class="bs-panel-head"><h2 class="bs-h2">${title}</h2><span class="bs-meta">Official records · Hub simulation odds</span></div>`
+    + `<div class="bs-panel-body">${B?`<p class="cap">${st.slice(0,B).map(r=>`${esc(sh(r.id))} (${recStr(r)}, ${pts(r.pf)} PF)`).join(" · ")} ${B===1?"leads":"hold the byes"} today. Tied records are separated by total points for; future points can change that order.</p>`:""}`
+    + `<p class="cap">All teams are shown; playoff and bye eligibility are separate. Current-score projections and your Season Predictor picks do not change this race.</p></div>`
+    + `<div class="bs-table-wrap"><table class="bs-table"><thead><tr><th scope="col">Team</th><th scope="col" class="num">W-L</th><th scope="col" class="num">Playoff odds</th>${B?`<th scope="col" class="num">Bye odds</th>`:""}<th scope="col">Status</th></tr></thead><tbody>${rows}</tbody></table></div>`
+    + `<div class="bs-panel-body">${!E?'<p class="cap">Checking clinch and elimination status…</p>':!mc?'<p class="cap">Simulation odds need at least two completed weeks of scores.</p>':""}`
+    + (details ? `<details class="bs-details"><summary>Key games in the bye race</summary><p class="cap">Each contender's current game and biggest remaining win/loss swing. These are conditional simulation estimates, not guarantees; other results still matter. — means fewer than 100 simulated outcomes.</p>${details}</details>` : "")
+    + `<p class="cap">Clinched and out labels use exact math. Percentages are Hub simulation estimates. Losing bye eligibility does not mean elimination from the playoffs.</p>`
+    + extraTeamStatsPanel(D,E,st)
+    + `</div></section>`;
+}
+
+function extraTeamStatsPanel(D,E,st){
+  if(!E?.str || !E?.sos) return "";
+  const rows=st.map(r=>{
+    const id=r.id,t=D.byId[id],x=E.str[id],so=E.sos[id],m=E.mc?.teams[id],c=E.cm[id];
+    const clinch=c.clinchedIn ? "Clinched" : c.eliminated ? "Eliminated" : c.magic!=null ? `${c.magic} W` : c.elimNum!=null ? `${c.elimNum} L` : "—";
+    return `<tr><td>${esc(t.short)}</td><td class="num">${pts(x.pfg)}</td><td class="num">${fmtW(x.allplayW)}-${fmtW(x.allplayL)}</td><td class="num">${signed1(x.luck)}</td><td class="num">${x.last3!=null?pts(x.last3):"—"}</td><td class="num">${so.opp!=null?`${pts(so.opp)} (${so.rank})`:"—"}</td><td class="num">${t.espnPlayoffPct!=null?Math.round(t.espnPlayoffPct*100)+"%":"—"}</td><td class="num">${m?`${m.projW.toFixed(1)}-${m.projL.toFixed(1)}`:"—"}</td><td class="num">${clinch}</td><td class="num">${t.projTeam>0?pts(t.projTeam):"—"}</td></tr>`;
+  }).join("");
+  return `<details class="bs-details"><summary>More team stats</summary><div class="bs-table-wrap"><table class="bs-table bs-table--stick1"><thead><tr><th scope="col">Team</th>${["PF/g","All-play","Luck","Last 3","SOS left","ESPN playoff odds","Projected W-L","Clinch / Out",`ESPN proj Wk ${D.week}`].map(x=>`<th scope="col" class="num">${x}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div><p class="cap">All-play: record against every team each week. Luck: actual wins minus all-play expected wins. SOS: opponents' points per game (rank 1 = easiest). Last 3: average points over the last three completed weeks. Projected W-L: Hub simulation average. Clinch / Out: W = wins guaranteeing a playoff spot; L = losses guaranteeing elimination. ESPN odds and weekly projections are ESPN's own.</p></details>`;
+}
+
 function paintPlayoffs(){
   const D = DATA; const el = document.getElementById("pane-playoffs");
   if(!D){ el.innerHTML = `<div class="note">No data.</div>`; return; }
@@ -1403,6 +1473,8 @@ function paintPlayoffs(){
   s.push(`<div class="bs-panel-body">`);
   if(firstOut.length) s.push(`<p class="cap"><b>First out:</b> ${firstOut.map(r=>`${esc(sh(r.id))} (${recStr(r)}, ${pts(r.pf)} PF)`).join(" · ")}</p>`);
   s.push(`<p class="cap">${weeksLeft ? `${weeksLeft} regular-season week${weeksLeft===1?"":"s"} left (through Week ${D.regWeeks}).` : "The regular season is over."} Full table: <a href="#standings">Standings</a></p></div></section>`);
+
+  s.push(byeRacePanel(D,E));
 
   // ---- 2. This week's Stakes (sorted by swing; one row + one blurb each) ----
   const stakes = mc ? stakesThisWeek(D, E) : [];
@@ -1449,45 +1521,6 @@ function paintPlayoffs(){
         + `<p class="cap">Remaining: ${remRow || "none"}</p></div></section>`);
     });
   }
-
-  // ---- 4. Team strength (all teams): both odds columns, labeled Hub and ESPN ----
-  s.push(`<section class="bs-panel" id="po-teams"><div class="bs-panel-head"><h2 class="bs-h2">Team strength</h2><span class="bs-meta">Playoff odds: Hub = this page's simulation · ESPN = ESPN's own</span></div>`);
-  if(!E) s.push(`<div class="bs-panel-body"><p class="cap">${pending}</p></div>`);
-  else {
-    const th = (label, title, num) => `<th${num===false?"":' class="num"'} scope="col"${title?` title="${esc(title)}"`:""}>${label}</th>`;
-    s.push(`<div class="bs-table-wrap"><table class="bs-table bs-table--stick1"><thead><tr>`
-      + th("Team", "", false) + th("W-L") + th("PF/g", "Points for per game")
-      + th("All-play", "Record if you played every team every week") + th("Luck", "Actual wins minus all-play expected wins (+ = lucky)")
-      + th("Last 3", "Average score over the last 3 completed weeks") + th("SOS left", "Remaining opponents' points per game (rank, 1 = easiest)")
-      + th("Hub odds", "Playoff odds from this page's 10,000-season simulation") + th("ESPN odds", "ESPN's own playoff odds (ESPN's simulation)")
-      + (B ? th("Bye (Hub)", "Odds of the #1 seed and the bye, from the Hub simulation") : "")
-      + th("Proj W-L", "Average final record across the Hub simulations")
-      + th("Clinch / Out", "Magic number (W: wins that clinch a spot no matter what) or elimination number (L: losses that end it)")
-      + th(`ESPN proj Wk ${D.week}`, "ESPN's projected points for this week's starters (blended into this week's games only)")
-      + `</tr></thead><tbody>`
-      + st.map(r=>{
-          const id = r.id, x = E.str[id], so = E.sos[id], c = E.cm[id], m = mc ? mc.teams[id] : null, t = D.byId[id];
-          const espn = t.espnPlayoffPct!=null ? Math.round(t.espnPlayoffPct*100)+"%" : "—";
-          const co = c.clinchedIn ? "Clinched" : c.eliminated ? "Eliminated"
-            : c.magic!=null ? `${c.magic} W` : c.elimNum!=null ? `${c.elimNum} L` : "—";
-          return `<tr><td>${teamCell(id, r.seed)}</td><td class="num">${recStr(r)}</td><td class="num">${pts(x.pfg)}</td>`
-            + `<td class="num">${fmtW(x.allplayW)}-${fmtW(x.allplayL)}</td><td class="num">${signed1(x.luck)}</td>`
-            + `<td class="num">${x.last3!=null ? pts(x.last3) : "—"}</td>`
-            + `<td class="num">${so.opp!=null ? `${pts(so.opp)} (${so.rank})` : "—"}</td>`
-            + `<td class="num">${m ? oddsTxt(m.pIn, c) : "—"}</td><td class="num">${espn}</td>`
-            + (B ? `<td class="num">${m ? (c.clinchedBye ? "100%" : c.byeGone ? "0%" : pc(m.pBye)) : "—"}</td>` : "")
-            + `<td class="num">${m ? `${m.projW.toFixed(1)}-${m.projL.toFixed(1)}` : "—"}</td>`
-            + `<td class="num">${co}</td><td class="num">${t.projTeam>0 ? pts(t.projTeam) : "—"}</td></tr>`;
-        }).join("")
-      + `</tbody></table></div>`);
-    const rule = D.seedingRule;
-    s.push(`<div class="bs-panel-body"><p class="cap">All-play: your record if you played all ${D.size-1} other teams every week. Luck: actual wins minus all-play expected wins. SOS left: remaining opponents' points per game, rank 1 = easiest. Clinch / Out: W = wins that clinch a spot no matter what, L = losses that end it.</p>`
-      + (rule && rule!=="TOTAL_POINTS_SCORED"
-          ? `<p class="cap">Tiebreak: ${esc(rule)} (the Hub's clinch math assumes total points for).</p>`
-          : `<p class="cap">Clinched/eliminated use the league's tiebreak (total points for). A tie in wins counts as not decided yet.</p>`)
-      + `</div>`);
-  }
-  s.push(`</section>`);
 
   // ---- 5. How this works (collapsed) ----
   s.push(`<section class="bs-panel"><div class="bs-panel-body"><details class="bs-details"><summary>How this works</summary>`
@@ -1911,7 +1944,7 @@ const MORE_KEYS = ["teams","leaders","history"];
 const TAB_KEYS = [...MAIN_KEYS,...MORE_KEYS];
 let LAST_MORE = "teams";
 const LEGACY_TAB = { insights:"scores", stakes:"playoffs", block:"teams" };
-const PO_SUBS = ["stakes","bubble","teams"];
+const PO_SUBS = ["bye","stakes","bubble","teams"];
 const HASH_POS = { qb:"QB", rb:"RB", wr:"WR", te:"TE", k:"K", def:"DEF", dst:"DEF" };
 let HASH_APPLIED = false;   // week/position segments are applied once, after the first successful load()
 let PO_SUB = null;          // Playoffs section to scroll to (#playoffs/<sub>); cleared when the user changes tabs

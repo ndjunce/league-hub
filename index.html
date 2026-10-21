@@ -99,6 +99,25 @@
 
   .foot{color:var(--text-2);font-size:var(--fs-micro);margin-top:24px;text-align:center}
   .hide{display:none}
+  @media(max-width:600px){
+    #po-teams .race-table,#po-teams .race-table tbody{display:block;width:100%}
+    #po-teams .race-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+    #po-teams .race-table tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin:0 12px 12px;padding:12px;border:1px solid var(--border);border-radius:8px;gap:10px}
+    #po-teams .race-table td{display:block;min-width:0;height:auto;padding:0;border:0;text-align:left;font-size:15px;white-space:normal;overflow-wrap:anywhere}
+    #po-teams .race-table td::before{content:attr(data-label);display:block;font-size:12px;color:var(--text-2);margin-bottom:3px}
+    #po-teams .race-table .race-name{grid-column:1/-1;order:0;font-size:17px;font-weight:600}
+    #po-teams .race-table .race-name::before{display:none}
+    #po-teams .race-table .race-metric{order:1}
+    #po-teams .race-table .race-status{grid-column:1/-1;order:2}
+    #po-teams .race-table .race-status br{display:none}
+    #po-teams .race-table .race-status .bs-dim::before{content:" · "}
+    #po-teams .race-table .race-path{grid-column:1/-1;order:3}
+    #po-teams .race-table .race-path summary{font-size:15px;line-height:1.5;min-height:44px;align-content:center}
+    #po-teams .race-table .race-path .cap{font-size:16px;line-height:1.6;color:var(--text);margin:8px 0}
+    #po-teams .race-table .race-path ul{padding-left:20px}
+    #po-teams .race-table .race-path li{margin:8px 0}
+    #po-teams > .bs-panel-body > .cap{font-size:14px;line-height:1.5}
+  }
 </style>
 </head>
 <body>
@@ -1429,14 +1448,20 @@ function byePathHtml(D,E,id){
     const ceiling=winsOf(r)+left-forced;
     // All our remaining games are wins in this scenario, so head-to-head losses are already included.
     const n=Math.max(0,Math.floor(ceiling-target)+1);
-    return n ? [`${esc(r.short)}: ${n} more loss${n===1?"":"es"}${forced?" beyond losing to you":""}`] : [];
+    return n ? [{name:r.short,n}] : [];
   });
+  const groups=new Map();
+  losses.forEach(r=>{if(!groups.has(r.n)) groups.set(r.n,[]);groups.get(r.n).push(r.name);});
+  const lossItems=[...groups].sort((a,b)=>a[0]-b[0]).map(([n,names])=>`<li>${names.map(esc).join(", ")}: ${n} other loss${n===1?"":"es"}${names.length>1?" each":""}.</li>`).join("");
   const pfGap=leader.pf-t.pf;
   const points=pfGap>0 ? `About ${pts(pfGap)} PF behind ${esc(leader.short)} today.`
-    : `You are not behind ${esc(leader.short)} on PF today.`;
-  return `<details class="bs-details"><summary>Win-out path: ${own.length} more win${own.length===1?"":"s"}</summary>`
-    + `<p class="cap">Win out to finish with ${fmtW(target)} win-equivalents. For an outright #1 record: ${losses.join("; ") || "no additional rival losses required"}. These results must all happen; they are a sufficient path, not the only way.</p>`
-    + `<p class="cap">Today: ${fmtW(gap)} win${gap===1?"":"s"} behind ${esc(leader.short)}. ${points} If final records tie, you must finish ahead on total PF. There is no fixed future points target; both teams keep scoring. Fewer wins can still work with more rival losses.</p></details>`;
+    : `Not behind ${esc(leader.short)} on PF today.`;
+  const record=`${t.record.w+own.length}-${t.record.l}${t.record.t?"-"+t.record.t:""}`;
+  const gapLabel=gap===0?"Tied for lead":`${fmtW(gap)} win${gap===1?"":"s"} back`;
+  return `<details class="bs-details"><summary>${gapLabel} · Bye path</summary>`
+    + `<p class="cap"><b>One example path:</b></p><ul class="cap"><li>Win your last ${own.length} → finish ${record}.</li>${lossItems}</ul>`
+    + `<p class="cap">All listed results are needed for this path. “Other losses” exclude games against you, already counted above. Fewer wins can work with more help.</p>`
+    + `<p class="cap">${points} Final tied records go to total PF; that target keeps moving.</p></details>`;
 }
 
 // Exact race membership comes from clinchMath; simulation percentages never eliminate a team.
@@ -1454,7 +1479,7 @@ function byeRacePanel(D, E){
     const bye = !c ? "Checking…" : c.clinchedBye ? "Clinched bye" : c.byeGone ? "Out of bye race" : r.seed<=B ? "Holds bye today" : "Chasing bye";
     const pIn = c?.clinchedIn ? "100%" : c?.eliminated ? "0%" : m ? pc(m.pIn) : "—";
     const pBye = c?.clinchedBye ? "100%" : c?.byeGone ? "0%" : m ? pc(m.pBye) : "—";
-    return `<tr><td>${team(r.id)}</td><td class="num">${recStr(r)}</td><td class="num">${pIn}</td>${B?`<td class="num">${pBye}</td><td>${byePathHtml(D,E,r.id)}</td>`:""}<td>${esc(playoff)}${B?`<br><span class="bs-dim">${esc(bye)}</span>`:""}</td></tr>`;
+    return `<tr><td class="race-name">${team(r.id)}</td><td class="num race-metric" data-label="Record">${recStr(r)}</td><td class="num race-metric" data-label="Playoff odds">${pIn}</td>${B?`<td class="num race-metric" data-label="Bye odds">${pBye}</td><td class="race-path" data-label="Bye clinch / path">${byePathHtml(D,E,r.id)}</td>`:""}<td class="race-status" data-label="Status">${esc(playoff)}${B?`<br><span class="bs-dim">${esc(bye)}</span>`:""}</td></tr>`;
   }).join("");
   const details = B && mc ? alive.map(r=>{
     const c = E.cm[r.id]; if(c.clinchedBye) return "";
@@ -1474,7 +1499,7 @@ function byeRacePanel(D, E){
   return `<section class="bs-panel" id="po-teams"><span id="po-bye"></span><div class="bs-panel-head"><h2 class="bs-h2">${title}</h2><span class="bs-meta">Official records · Hub simulation odds</span></div>`
     + `<div class="bs-panel-body">${B?`<p class="cap">${st.slice(0,B).map(r=>`${esc(sh(r.id))} (${recStr(r)}, ${pts(r.pf)} PF)`).join(" · ")} ${B===1?"leads":"hold the byes"} today. Tied records are separated by total points for; future points can change that order.</p>`:""}`
     + `<p class="cap">All teams are shown; playoff and bye eligibility are separate. Current-score projections and your Season Predictor picks do not change this race.</p></div>`
-    + `<div class="bs-table-wrap"><table class="bs-table"><thead><tr><th scope="col">Team</th><th scope="col" class="num">W-L</th><th scope="col" class="num">Playoff odds</th>${B?`<th scope="col" class="num">Bye odds</th><th scope="col">Bye magic number</th>`:""}<th scope="col">Status</th></tr></thead><tbody>${rows}</tbody></table></div>`
+    + `<div class="bs-table-wrap"><table class="bs-table race-table"><thead><tr><th scope="col">Team</th><th scope="col" class="num">W-L</th><th scope="col" class="num">Playoff odds</th>${B?`<th scope="col" class="num">Bye odds</th><th scope="col">Bye magic number</th>`:""}<th scope="col">Status</th></tr></thead><tbody>${rows}</tbody></table></div>`
     + `<div class="bs-panel-body">${!E?'<p class="cap">Checking clinch and elimination status…</p>':!mc?'<p class="cap">Simulation odds need at least two completed weeks of scores.</p>':""}`
     + (details ? `<details class="bs-details"><summary>Key games in the bye race</summary><p class="cap">Each contender's current game and biggest remaining win/loss swing. These are conditional simulation estimates, not guarantees; other results still matter. — means fewer than 100 simulated outcomes.</p>${details}</details>` : "")
     + `<p class="cap">Clinched and out labels use exact math. Percentages are Hub simulation estimates. Losing bye eligibility does not mean elimination from the playoffs.</p>`

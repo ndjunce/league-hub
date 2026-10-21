@@ -1395,6 +1395,50 @@ function conditionalBye(mc, gi, id, homeWon){
   return n>=100 ? mc.byeCond[(gi*2+(homeWon?0:1))*mc.NT+i]/n : null;
 }
 
+// Minimum additional wins guaranteeing the single bye, even if all other outcomes/PF go against us.
+// If m wins exceed games against other opponents, the remaining wins must beat this rival.
+function byeMagicNumber(D,E,id){
+  const c=E?.cm[id];
+  if(!c) return "Checking…";
+  if(c.clinchedBye) return "Clinched bye";
+  if(c.byeGone) return "Out of bye race";
+  if(D.byes!==1) return "—";
+  const games=remainingGames(D), own=games.filter(g=>g.homeId===id||g.awayId===id), Gi=own.length;
+  const rivals=D.teams.filter(t=>t.id!==id).map(t=>({
+    ceiling:winsOf(t)+games.filter(g=>g.homeId===t.id||g.awayId===t.id).length,
+    meetings:own.filter(g=>g.homeId===t.id||g.awayId===t.id).length
+  }));
+  const Wi=winsOf(D.byId[id]);
+  for(let m=0;m<=Gi;m++){
+    if(rivals.every(r=>Wi+m>r.ceiling-Math.max(0,m-(Gi-r.meetings))))
+      return m===0 ? "Clinched bye" : `${m} more win${m===1?"":"s"} clinch`;
+  }
+  return "Needs help";
+}
+
+function byePathHtml(D,E,id){
+  const magic=byeMagicNumber(D,E,id);
+  if(magic!=="Needs help") return esc(magic);
+  const games=remainingGames(D),own=games.filter(g=>g.homeId===id||g.awayId===id),t=D.byId[id];
+  const target=winsOf(t)+own.length;
+  const leaders=D.teams.slice().sort((a,b)=>winsOf(b)-winsOf(a)||b.pf-a.pf),leader=leaders[0];
+  const gap=Math.max(0,winsOf(leader)-winsOf(t));
+  const losses=D.teams.filter(r=>r.id!==id).flatMap(r=>{
+    const left=games.filter(g=>g.homeId===r.id||g.awayId===r.id).length;
+    const forced=own.filter(g=>g.homeId===r.id||g.awayId===r.id).length;
+    const ceiling=winsOf(r)+left-forced;
+    // All our remaining games are wins in this scenario, so head-to-head losses are already included.
+    const n=Math.max(0,Math.floor(ceiling-target)+1);
+    return n ? [`${esc(r.short)}: ${n} more loss${n===1?"":"es"}${forced?" beyond losing to you":""}`] : [];
+  });
+  const pfGap=leader.pf-t.pf;
+  const points=pfGap>0 ? `About ${pts(pfGap)} PF behind ${esc(leader.short)} today.`
+    : `You are not behind ${esc(leader.short)} on PF today.`;
+  return `<details class="bs-details"><summary>Win-out path: ${own.length} more win${own.length===1?"":"s"}</summary>`
+    + `<p class="cap">Win out to finish with ${fmtW(target)} win-equivalents. For an outright #1 record: ${losses.join("; ") || "no additional rival losses required"}. These results must all happen; they are a sufficient path, not the only way.</p>`
+    + `<p class="cap">Today: ${fmtW(gap)} win${gap===1?"":"s"} behind ${esc(leader.short)}. ${points} If final records tie, you must finish ahead on total PF. There is no fixed future points target; both teams keep scoring. Fewer wins can still work with more rival losses.</p></details>`;
+}
+
 // Exact race membership comes from clinchMath; simulation percentages never eliminate a team.
 function byeRacePanel(D, E){
   const B = D.byes || 0;
@@ -1410,7 +1454,7 @@ function byeRacePanel(D, E){
     const bye = !c ? "Checking…" : c.clinchedBye ? "Clinched bye" : c.byeGone ? "Out of bye race" : r.seed<=B ? "Holds bye today" : "Chasing bye";
     const pIn = c?.clinchedIn ? "100%" : c?.eliminated ? "0%" : m ? pc(m.pIn) : "—";
     const pBye = c?.clinchedBye ? "100%" : c?.byeGone ? "0%" : m ? pc(m.pBye) : "—";
-    return `<tr><td>${team(r.id)}</td><td class="num">${recStr(r)}</td><td class="num">${pIn}</td>${B?`<td class="num">${pBye}</td>`:""}<td>${esc(playoff)}${B?`<br><span class="bs-dim">${esc(bye)}</span>`:""}</td></tr>`;
+    return `<tr><td>${team(r.id)}</td><td class="num">${recStr(r)}</td><td class="num">${pIn}</td>${B?`<td class="num">${pBye}</td><td>${byePathHtml(D,E,r.id)}</td>`:""}<td>${esc(playoff)}${B?`<br><span class="bs-dim">${esc(bye)}</span>`:""}</td></tr>`;
   }).join("");
   const details = B && mc ? alive.map(r=>{
     const c = E.cm[r.id]; if(c.clinchedBye) return "";
@@ -1430,10 +1474,11 @@ function byeRacePanel(D, E){
   return `<section class="bs-panel" id="po-teams"><span id="po-bye"></span><div class="bs-panel-head"><h2 class="bs-h2">${title}</h2><span class="bs-meta">Official records · Hub simulation odds</span></div>`
     + `<div class="bs-panel-body">${B?`<p class="cap">${st.slice(0,B).map(r=>`${esc(sh(r.id))} (${recStr(r)}, ${pts(r.pf)} PF)`).join(" · ")} ${B===1?"leads":"hold the byes"} today. Tied records are separated by total points for; future points can change that order.</p>`:""}`
     + `<p class="cap">All teams are shown; playoff and bye eligibility are separate. Current-score projections and your Season Predictor picks do not change this race.</p></div>`
-    + `<div class="bs-table-wrap"><table class="bs-table"><thead><tr><th scope="col">Team</th><th scope="col" class="num">W-L</th><th scope="col" class="num">Playoff odds</th>${B?`<th scope="col" class="num">Bye odds</th>`:""}<th scope="col">Status</th></tr></thead><tbody>${rows}</tbody></table></div>`
+    + `<div class="bs-table-wrap"><table class="bs-table"><thead><tr><th scope="col">Team</th><th scope="col" class="num">W-L</th><th scope="col" class="num">Playoff odds</th>${B?`<th scope="col" class="num">Bye odds</th><th scope="col">Bye magic number</th>`:""}<th scope="col">Status</th></tr></thead><tbody>${rows}</tbody></table></div>`
     + `<div class="bs-panel-body">${!E?'<p class="cap">Checking clinch and elimination status…</p>':!mc?'<p class="cap">Simulation odds need at least two completed weeks of scores.</p>':""}`
     + (details ? `<details class="bs-details"><summary>Key games in the bye race</summary><p class="cap">Each contender's current game and biggest remaining win/loss swing. These are conditional simulation estimates, not guarantees; other results still matter. — means fewer than 100 simulated outcomes.</p>${details}</details>` : "")
     + `<p class="cap">Clinched and out labels use exact math. Percentages are Hub simulation estimates. Losing bye eligibility does not mean elimination from the playoffs.</p>`
+    + (B===1?`<p class="cap"><b>Bye magic number:</b> additional wins that guarantee the #1 seed, regardless of other results or future points. Includes head-to-head games. Where wins alone cannot guarantee it, expand the win-out path for specific rival losses and today's record/PF gap. This is one sufficient scenario, not a prediction or minimum wins required. A tied final record needs the points-for tiebreak. Updated from official records, not live-score assumptions.</p>`:"")
     + extraTeamStatsPanel(D,E,st)
     + `</div></section>`;
 }

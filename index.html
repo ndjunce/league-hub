@@ -99,6 +99,16 @@
 
   .foot{color:var(--text-2);font-size:var(--fs-micro);margin-top:24px;text-align:center}
   .hide{display:none}
+  .swap-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .swap-card{border:1px solid var(--border);border-radius:8px;padding:14px;min-width:0}
+  .swap-card h3{margin:0 0 10px;font-size:16px}
+  .swap-results{margin:10px 0}
+  .swap-results strong{display:block;font-size:20px}
+  #pane-swap .cap{font-size:14px;line-height:1.5}
+  #swapManager{font:inherit;padding:10px;max-width:100%;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px}
+  .swap-matrix td small{display:block;color:var(--text-2)}
+  .swap-diagonal{font-weight:700;background:var(--surface-2)}
+  @media(max-width:600px){.swap-cards{grid-template-columns:1fr}.swap-matrix{display:none}#pane-swap .bs-panel-head{display:block}#pane-swap .cap{font-size:15px}}
   @media(max-width:600px){
     #po-teams .race-table,#po-teams .race-table tbody{display:block;width:100%}
     #po-teams .race-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
@@ -158,16 +168,19 @@
       <button type="button" role="tab" id="tab-teams" data-key="teams" aria-controls="pane-teams" aria-selected="true">Teams</button>
       <button type="button" role="tab" id="tab-leaders" data-key="leaders" aria-controls="pane-leaders" aria-selected="false" tabindex="-1">Leaders</button>
       <button type="button" role="tab" id="tab-history" data-key="history" aria-controls="pane-history" aria-selected="false" tabindex="-1">History</button>
+      <button type="button" role="tab" id="tab-swap" data-key="swap" aria-controls="pane-swap" aria-selected="false" tabindex="-1">Schedule Swap</button>
     </div>
     <div id="pane-teams" role="tabpanel" aria-labelledby="tab-teams"><div class="loading">Loading…</div></div>
     <div id="pane-leaders" role="tabpanel" aria-labelledby="tab-leaders" class="hide"><div class="loading">Loading…</div></div>
     <div id="pane-history" role="tabpanel" aria-labelledby="tab-history" class="hide"><div class="loading">Loading…</div></div>
+    <div id="pane-swap" role="tabpanel" aria-labelledby="tab-swap" class="hide"><div class="loading">Loading…</div></div>
   </div>
 
   <div class="foot" id="foot"></div>
 </div>
 
 <script src="assets/standings-scenarios.js"></script>
+<script src="assets/schedule-swap.js"></script>
 <script>
 /* =============================================================================
    League Hub — standalone, shareable, league-FACING. No personal/targeting data.
@@ -479,9 +492,9 @@ providers.sleeper = (function(){
 // completed games only (a game with a winner set, or a period before the current week)
 function completedGames(D){ return D.games.filter(g=>(g.winner==="HOME"||g.winner==="AWAY") || g.period < D.week); }
 
-// plain standings: W-L order, points-for tiebreaker (no "power" editorializing)
+// Official record order: wins + half a tie, then full-precision points for.
 function standingsList(D){
-  return D.teams.slice().sort((a,b)=> (b.record.w-a.record.w) || (b.pf-a.pf))
+  return D.teams.slice().sort((a,b)=> ((b.record.w+0.5*(b.record.t||0))-(a.record.w+0.5*(a.record.t||0))) || (b.pf-a.pf))
     .map((t,i)=>({ rank:i+1, id:t.id, disp:t.disp, pf:t.pf, rec:t.record }));
 }
 
@@ -972,6 +985,40 @@ function paintSeasonPredictor(){
   el.innerHTML=seasonPredictorPanel(DATA);wireSeasonPredictor(DATA,el);
 }
 
+/* ============================ SCHEDULE SWAP ============================ */
+let SWAP_MANAGER=null;
+function paintScheduleSwap(){
+  const el=document.getElementById('pane-swap'),D=DATA;
+  if(!D){el.innerHTML='<div class="note">No data.</div>';return;}
+  const result=HubScheduleSwap.build(D),teams=D.teams;
+  if(!teams.some(t=>String(t.id)===SWAP_MANAGER))SWAP_MANAGER=String(teams[0]?.id);
+  const selected=D.byId[SWAP_MANAGER],rec=r=>`${r.w}-${r.l}${r.t?'-'+r.t:''}`;
+  const rate=r=>r.n?(100*(r.w+0.5*r.t)/r.n).toFixed(1)+'%':'—';
+  const label=id=>esc(D.byId[id]?.short||id);
+  let body=`<section class="bs-panel"><div class="bs-panel-head"><h2 class="bs-h2">Schedule Swap</h2><span class="bs-meta">Same actual scores · different opponents</span></div><div class="bs-panel-body">`
+    + `<p class="cap">How would your actual weekly scores have done against someone else's opponents? This is a comparison of past scores, not a prediction.</p>`
+    + `<label for="swapManager">Use scores from </label><select id="swapManager">${teams.map(t=>`<option value="${t.id}" ${String(t.id)===SWAP_MANAGER?'selected':''}>${esc(t.short)}</option>`).join('')}</select>`
+    + `<p class="cap">${result.weeks.length?`Completed weeks: ${result.weeks.join(', ')}.`:'No fully finalized, complete regular-season weeks available yet.'} Only regular-season head-to-head games count.</p>`;
+  if(result.weeks.length){
+    const full=result.cells[SWAP_MANAGER][SWAP_MANAGER].actual;
+    body+=`<p class="cap"><b>${esc(selected.short)}'s real record across these ${full.n} weeks: ${rec(full)}.</b> Each card below shows the result with that manager's schedule. Any week that would put you against your own score is left out.</p>`;
+    body+=`<div class="swap-cards">`+teams.map(t=>{
+      const c=result.cells[SWAP_MANAGER][t.id],own=String(t.id)===SWAP_MANAGER;
+      return `<article class="swap-card"><h3><span class="tm-cell">${avatarHtml(t.id,t.short,22)}${label(t.id)}</span> ${own?'· actual schedule':'schedule'}</h3>`
+        + `<div class="swap-results"><div><span class="bs-meta">${own?`${esc(selected.short)}'s real schedule`:`With ${label(t.id)}'s schedule`}</span><strong>${c.swapped.n?rec(c.swapped):'—'}</strong>${rate(c.swapped)} win rate</div>`
+        + `</div><p class="cap">Based on ${c.swapped.n} week${c.swapped.n===1?'':'s'}.</p>`
+        + (c.skipped.length?`<p class="cap">Week${c.skipped.length===1?'':'s'} ${c.skipped.join(', ')} left out: this schedule would put ${esc(selected.short)} against their own score.</p>`:'')
+        + `<details class="bs-details"><summary>Which weeks?</summary><p class="cap">Weeks used: ${c.included.join(', ')||'none'}.</p></details></article>`;
+    }).join('')+`</div>`;
+    body+=`<details class="bs-details swap-matrix"><summary>Full season matrix</summary><p class="cap">Rows = whose scores; columns = whose schedule. Each cell shows W-L-T and games counted. Diagonal = actual schedule. Compare rates, not raw win totals when game counts differ.</p><div class="bs-table-wrap"><table class="bs-table bs-table--stick1"><caption class="cap">Actual scores against borrowed schedules</caption><thead><tr><th scope="col">Scores ↓ / Schedule →</th>${teams.map(t=>`<th scope="col">${label(t.id)}</th>`).join('')}</tr></thead><tbody>`
+      + teams.map(t=>`<tr><th scope="row">${label(t.id)}</th>${teams.map(s=>{const c=result.cells[t.id][s.id];return `<td class="${t.id===s.id?'swap-diagonal':''}">${c.swapped.n?rec(c.swapped):'—'}<small>${c.swapped.n} games · ${rate(c.swapped)}</small></td>`;}).join('')}</tr>`).join('')+`</tbody></table></div></details>`;
+  }
+  body+=`<details class="bs-details"><summary>How comparisons stay fair</summary><p class="cap">A self-matchup is skipped, not counted as a tie. Different cards can count different numbers of games, so check the weeks counted before comparing records. There is no raw-wins ranking. A score tie counts as a tie and half a win in win rate.</p><p class="cap">Weeks with missing scores, byes, duplicate games or doubleheaders are excluded for everyone. Median games are not included. In-progress weeks wait until every matchup is ESPN-final. This uses fixed scores; lineup decisions and player performance are not changed.</p>`
+    + `<p class="cap">Excluded weeks: ${result.excluded.map(x=>`Week ${x.week}: ${esc(x.reason)}`).join('; ')||'none'}.</p></details></div></section>`;
+  el.innerHTML=body;
+  document.getElementById('swapManager').addEventListener('change',e=>{SWAP_MANAGER=e.target.value;paintScheduleSwap();document.getElementById('swapManager').focus();});
+}
+
 /* ============================ LEADERS ============================ */
 let LEAD_POS = "all";   // Leaders filter: "all" or a POS key (QB/RB/WR/TE/K/DEF); #leaders/<POS> deep-links it
 let LEAD_SORT = "total", LEAD_DESC = true;
@@ -1047,9 +1094,9 @@ function streakOf(D, teamId){
 
 /* ============================ PLAYOFF SCENARIOS ============================ */
 
-// standings sorted by W, then points-for tiebreaker
+// standings sorted by W, then points-for tiebreaker (ties count as half a win)
 function standings(D){
-  return D.teams.slice().sort((a,b)=> (b.record.w-a.record.w) || (b.pf-a.pf))
+  return D.teams.slice().sort((a,b)=> ((b.record.w+0.5*(b.record.t||0))-(a.record.w+0.5*(a.record.t||0))) || (b.pf-a.pf))
     .map((t,i)=>({ seed:i+1, id:t.id, name:t.disp, w:t.record.w, l:t.record.l, t:t.record.t, pf:t.pf }));
 }
 
@@ -1596,7 +1643,7 @@ function paintPlayoffs(){
   s.push(`<section class="bs-panel"><div class="bs-panel-body"><details class="bs-details"><summary>How this works</summary>`
     + `<p class="cap">Odds come from playing out the rest of the regular season 10,000 times. Each team's weekly score is drawn around its season average, pulled toward the league average early on, with ESPN's projections mixed in for this week only.</p>`
     + `<p class="cap">Ties in record go to total points for, like ESPN. Clinched and eliminated are exact math, not simulations.</p>`
-    + `<p class="cap">The numbers stay the same all week and update when ESPN finalizes scores.</p>`
+    + `<p class="cap">Odds are estimates, not guarantees. Auto-refresh recalculates them when official records, points for or the count of finalized games changes. Reloading the page also uses the latest ESPN starter projections, so odds can change within a week. These are full-week simulations, not forecasts of points remaining in a live matchup.</p>`
     + `</details></div></section>`);
 
   el.innerHTML = s.join("");
@@ -1967,7 +2014,7 @@ async function load(){
     // first successful load: apply the week/position parts of a shared link (needs D.regWeeks). Auto-refresh keeps in-memory state.
     if(!HASH_APPLIED){ applyHash(readHash()); HASH_APPLIED = true; }
     document.getElementById("sub").textContent = `${DATA.size} teams · ${DATA.season||LEAGUE.season} · Week ${DATA.week}`;
-    paintScores(); paintStandings(); paintSeasonPredictor(); paintPlayoffs(); paintLeaders(); paintTeams(); paintHistory();
+    paintScores(); paintStandings(); paintSeasonPredictor(); paintPlayoffs(); paintLeaders(); paintTeams(); paintHistory(); paintScheduleSwap();
     writeHash();
     const hhmm = new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
     status.textContent = `ESPN · updated ${hhmm}`;
@@ -2010,7 +2057,7 @@ function setSelectedTab(tablist, key){ tablist.querySelectorAll('[role="tab"]').
         #predictor · #teams[/<teamId>] · #leaders[/<POS>] · #history[/<year>]
         Old links still work: #insights[/wkN] -> #scores[/wkN], #stakes -> #playoffs/stakes, #block -> #teams ---- */
 const MAIN_KEYS = ["scores","standings","playoffs","predictor","more"];
-const MORE_KEYS = ["teams","leaders","history"];
+const MORE_KEYS = ["teams","leaders","history","swap"];
 const TAB_KEYS = [...MAIN_KEYS,...MORE_KEYS];
 let LAST_MORE = "teams";
 const LEGACY_TAB = { insights:"scores", stakes:"playoffs", block:"teams" };
